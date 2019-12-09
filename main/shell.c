@@ -2,8 +2,9 @@
 #include "S2LP_Config.h"
 #include <string.h>
 #include <stdio.h>
+#include "driver/uart.h"
 
-__eeprom _par _pars[]={
+_par _pars[]={
     {PAR_UI32,'F',{ 433000000UL } },  // base frequency
     {PAR_UI8,'M',{ 0xA0 } }, // modulation MOD_2FSK
     {PAR_UI32,'R',{ 12500UL }}, // datarate
@@ -32,6 +33,8 @@ __eeprom _par _pars[]={
 
 char t[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
+char NL[2]={'\r','\n'};
+
 char c_buf[BUF_LEN], val_buf[BUF_LEN];
 uint8_t c_len;
 uint8_t hex=0;
@@ -42,13 +45,9 @@ char commands[] = {'S', 'L', 'D'};
 char ver[]={"=== S2-LP shell v 1.1.4 ===\r\n"};
 
 void send_chars(char* x) {
-    uint8_t i=0;
-    while(x[i]!=0) EUSART1_Write(x[i++]);
-    while (!EUSART1_is_tx_done());
-}
-
-void empty_RXbuffer() {
-    while (EUSART1_is_rx_ready()) EUSART1_Read();
+    uint8_t len=strlen(x);
+    uart_write_bytes(UART_NUM_0,x,len);
+    uart_wait_tx_done(UART_NUM_0,1000);
 }
 
 uint8_t stringToUInt32(char* str, uint32_t* val) //it is a function made to convert the string value to integer value.
@@ -179,16 +178,15 @@ void _print_par(_par* par)
         if(hex) ui8tox(par->u.ui8par, val_buf);
         else ui8toa(par->u.ui8par, val_buf);
     }
-    EUSART1_Write(par->c);
-    EUSART1_Write('=');
+	uart_write_bytes(UART_NUM_0,&par->c,1);
+	char x='=';
+	uart_write_bytes(UART_NUM_0,&x,1);
     uint8_t i = 0;
     while (val_buf[i]) {
-        EUSART1_Write(val_buf[i++]);
-        while (!EUSART1_is_tx_done());
+    	uart_write_bytes(UART_NUM_0,&val_buf[i++],1);
     }
-    EUSART1_Write('\r');
-    EUSART1_Write('\n');
-    while (!EUSART1_is_tx_done());
+	uart_write_bytes(UART_NUM_0,NL,2);
+    uart_wait_tx_done(UART_NUM_0,1000);
 }
 
 void print_par(char p)
@@ -417,6 +415,7 @@ uint8_t proceed() {
 
 void start_x_shell(void) {
     char c, cmd, par;
+    size_t len;
     uint8_t start = 0;
     uint32_t uid;
     //    printf("Start shell\r");
@@ -433,24 +432,26 @@ void start_x_shell(void) {
                 send_exit();
                 return;
             }
-        }
-        if (EUSART1_is_rx_ready()) {
-            c = EUSART1_Read();
-            EUSART1_Write(c);
+        };
+        uart_get_buffered_data_len(UART_NUM_0,&len);
+        if (len!=0) {
+            uart_read_bytes(UART_NUM_0,(uint8_t*)&c,1,1000);
+            uart_write_bytes(UART_NUM_0,&c,1);
             if (c == 0x08) {
-                EUSART1_Write(' ');
-                EUSART1_Write(c);
+            	char x=' ';
+            	uart_write_bytes(UART_NUM_0,&x,1);
+            	uart_write_bytes(UART_NUM_0,&c,1);
                 c_len--;
-                while (!EUSART1_is_tx_done());
+                uart_wait_tx_done(UART_NUM_0,1000);
                 continue;
             }
-            while (!EUSART1_is_tx_done());
+            uart_wait_tx_done(UART_NUM_0,1000);
             start = 1;
             switch (c) {
                 case '\r':
                 case '\n':
                     c_buf[c_len] = 0;
-                    empty_RXbuffer();
+                    uart_flush_input(UART_NUM_0);
                     uint8_t r = proceed();
                     if (r == 0) return;
                     if (r != 1) send_error()
@@ -461,7 +462,7 @@ void start_x_shell(void) {
                     c_buf[c_len++] = c;
                     continue;
             }
-            empty_RXbuffer();
+            uart_flush_input(UART_NUM_0);
             c_len = 0;
         }
     }
