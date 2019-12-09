@@ -1,0 +1,17 @@
+key,type,encoding,value
+s2lp,namespace,,
+F,data,u32,433000000
+M,data,u8,160
+R,data,u32,12500
+W,data,u32,50000
+D,data,u32,12500
+S,data,u32,50000
+P,data,i32,16
+T,data,u8,0
+L,data,u8,1
+C,data,i32,21
+E,data,u32,64
+X,data,u8,3
+Y,data,u8,1
+Z,data,u8,2
+G,data,u8,96
