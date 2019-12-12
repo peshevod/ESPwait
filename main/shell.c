@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "driver/uart.h"
+#include "freertos/timers.h"
 
 _par _pars[]={
     {PAR_UI32,'F',{ 433000000UL } },  // base frequency
@@ -43,6 +44,8 @@ char err[] = {"\r\nError\r\n> "};
 char ex[] = {"\r\nExit\r\n"};
 char commands[] = {'S', 'L', 'D'};
 char ver[]={"=== S2-LP shell v 1.1.4 ===\r\n"};
+
+TimerHandle_t Timer3;
 
 void send_chars(char* x) {
     uint8_t len=strlen(x);
@@ -423,13 +426,16 @@ void start_x_shell(void) {
     get_uid(&uid);
     set_uid(uid);
     c_len = 0;
-    SetTimer3(11000);
+    Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,3,NULL);
+    xTimerStart(Timer3);
+//    SetTimer3(11000);
     send_chars(ver);
     send_prompt();
     while (1) {
         if (!start) {
-            if (TestTimer3()) {
-                send_exit();
+//            if (TestTimer3()) {
+        	if(!xTimerIsTimerActive(Timer3))
+        	send_exit();
                 return;
             }
         };
