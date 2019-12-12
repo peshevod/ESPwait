@@ -14,6 +14,8 @@
 #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
+#include "shell.h"
+
 
 static QueueHandle_t uart2_queue;
 static uint8_t* data0;
@@ -172,7 +174,7 @@ static void send_to_cloud_task(void *arg)
 static void get_s2lp_status(void *arg)
 {
 
-	int i=0;
+//	int i=0;
 	gpio_set_direction(PIN_NUM_SDN, GPIO_MODE_OUTPUT);
 	gpio_iomux_out(PIN_NUM_CS, FUNC_MTDO_HSPICS0, false);
 //	gpio_set_direction(PIN_NUM_CS, GPIO_MODE_OUTPUT);
@@ -261,5 +263,6 @@ void app_main(void)
 //	xTaskCreate(uart_rec_task, "uart_rec_task", 2048, NULL, 10, NULL);
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
+	start_x_shell();
     xTaskCreate(get_s2lp_status, "get_s2lp_status", 4096, NULL, 10, NULL);
 }

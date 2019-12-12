@@ -7,5 +7,8 @@
 # set(COMPONENT_ADD_INCLUDEDIRS ". S2LP_Library/Inc")
 
 #register_component()
-idf_component_register(SRCS "main.c" "radio.c"
+idf_component_register(SRCS "main.c"
+						    "radio.c"
+						    "shell.c"
+						    "spi_intf.c"
                     INCLUDE_DIRS "." "../components/S2LP_Library/Inc")

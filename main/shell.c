@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include "driver/uart.h"
 #include "freertos/timers.h"
+#include "nvs_flash.h"
+#include "esp_system.h"
 
 _par _pars[]={
     {PAR_UI32,'F',{ 433000000UL } },  // base frequency
@@ -46,6 +48,7 @@ char commands[] = {'S', 'L', 'D'};
 char ver[]={"=== S2-LP shell v 1.1.4 ===\r\n"};
 
 TimerHandle_t Timer3;
+nvs_handle_t nvsh;
 
 void send_chars(char* x) {
     uint8_t len=strlen(x);
@@ -219,13 +222,30 @@ void print_pars()
 uint8_t set_par(char par, char* val_buf)
 {
     _par* __pars=_pars;
+    uint32_t ui32_v;
+    int32_t i32_v;
+    uint8_t ui8_v;
+    char key[]={"s2lp.x"};
+    key[5]=par;
     while(__pars->type)
     {
         if(__pars->c==par)
         {
-            if(__pars->type==PAR_UI32) { if (stringToUInt32(val_buf, &(__pars->u.ui32par))) return 1; };
-            if(__pars->type==PAR_I32) { if (stringToInt32(val_buf, &(__pars->u.i32par))) return 1; };
-            if(__pars->type==PAR_UI8) { if (stringToUInt8(val_buf, &(__pars->u.ui8par))) return 1; };
+            if(__pars->type==PAR_UI32)
+            {
+            	stringToUInt32(val_buf, &ui32_v);
+            	if (nvs_set_u32(nvsh, key, ui32_v)!=ESP_OK) return 1;
+            };
+            if(__pars->type==PAR_I32)
+            {
+            	stringToInt32(val_buf, &i32_v);
+            	if (nvs_set_i32(nvsh, key, i32_v)!=ESP_OK) return 1;
+            };
+            if(__pars->type==PAR_UI8)
+            {
+            	stringToUInt8(val_buf, &ui8_v);
+            	if (nvs_set_u8(nvsh, key, ui8_v)!=ESP_OK) return 1;
+            };
             return 0;
         };
         __pars++;
@@ -249,14 +269,16 @@ void set_uid(uint32_t uid)
 
 uint8_t set_s(char p,void* s)
 {
+    char key[]={"s2lp.x"};
+    key[5]=p;
     _par* __pars=_pars;
     while(__pars->type)
     {
         if(__pars->c==p)
         {
-            if(__pars->type==PAR_UI32) *((uint32_t*)s)=__pars->u.ui32par;
-            if(__pars->type==PAR_I32)  *((int32_t*)s)=__pars->u.i32par;
-            if(__pars->type==PAR_UI8)  *((uint8_t*)s)=__pars->u.ui8par;
+            if(__pars->type==PAR_UI32) if(nvs_get_u32(nvsh, key, (uint32_t*)s)!=ESP_OK) return 1;
+            if(__pars->type==PAR_I32)  if(nvs_get_i32(nvsh, key, (int32_t*)s)!=ESP_OK) return 1;
+            if(__pars->type==PAR_UI8)  if(nvs_get_u8(nvsh, key, (uint8_t*)s)!=ESP_OK) return 1;
             return 0;
         };
         __pars++;
@@ -266,16 +288,9 @@ uint8_t set_s(char p,void* s)
 
 void get_uid(uint32_t* uid)
 {
-    *uid=0;
-    for(uint8_t n=0;n<4;n++)
-    {
-        NVMCON1bits.NVMREGS=1;
-        NVMADRH=0x80;
-        NVMADRL=n;
-        NVMCON1bits.RD=1;
-        uint32_t d=NVMDATL;
-        *uid|=(d<<(24-8*n));
-    }
+	uint8_t mac[6];
+	ESP_ERROR_CHECK(esp_efuse_mac_get_default(mac));
+	memcpy(uid,&(mac[2]),4);
 }
 
 char* i32toa(int32_t i, char* b) {
@@ -368,7 +383,7 @@ char* ui32tox(uint32_t i, char* b)
 
 
 uint8_t proceed() {
-    uint8_t i = 0, par, val, cmd;
+    uint8_t i = 0, par, cmd;
     //    printf("proceed %s\r\n",c_buf);
     c_buf[c_len] = 0;
     cmd = c_buf[i++];
@@ -417,24 +432,26 @@ uint8_t proceed() {
 }
 
 void start_x_shell(void) {
-    char c, cmd, par;
+    char c, cmd;
     size_t len;
     uint8_t start = 0;
     uint32_t uid;
     //    printf("Start shell\r");
 
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(nvs_open("s2lp", NVS_READWRITE, &nvsh));
     get_uid(&uid);
     set_uid(uid);
     c_len = 0;
-    Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,3,NULL);
-    xTimerStart(Timer3);
+    Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,NULL);
+    xTimerStart(Timer3,0);
 //    SetTimer3(11000);
     send_chars(ver);
     send_prompt();
     while (1) {
         if (!start) {
 //            if (TestTimer3()) {
-        	if(!xTimerIsTimerActive(Timer3))
+        	if(!xTimerIsTimerActive(Timer3)) {
         	send_exit();
                 return;
             }
