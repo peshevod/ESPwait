@@ -17,6 +17,12 @@ typedef struct {
     const char *str;
 } type_str_pair_t;
 
+typedef struct param
+{
+    char c;
+    nvs_type_t type;
+} _param;
+
 // Register NVS functions
 void register_nvs();
 

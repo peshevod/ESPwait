@@ -15,6 +15,7 @@
 #include "nvs_flash.h"
 #include "spi_intf.h"
 #include "shell.h"
+#include "s2lp_console.h"
 
 
 static QueueHandle_t uart2_queue;
@@ -40,11 +41,11 @@ const int WIFI_CONNECTED_BIT = BIT0;
 
 static void initialize_nvs()
 {
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK( nvs_flash_erase() );
-        err = nvs_flash_init();
-    }
+    esp_err_t err = nvs_flash_init_partition("nvs_key");
+//    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+//        ESP_ERROR_CHECK( nvs_flash_erase() );
+//        err = nvs_flash_init();
+//    }
     ESP_ERROR_CHECK(err);
 }
 
@@ -268,6 +269,7 @@ void app_main(void)
 //	xTaskCreate(uart_rec_task, "uart_rec_task", 2048, NULL, 10, NULL);
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
-	start_x_shell();
+//	start_x_shell();
+	start_s2lp_console();
     xTaskCreate(get_s2lp_status, "get_s2lp_status", 4096, NULL, 10, NULL);
 }

@@ -11,4 +11,5 @@ idf_component_register(SRCS "main.c"
 						    "radio.c"
 						    "shell.c"
 						    "spi_intf.c"
-                    INCLUDE_DIRS "." "../components/S2LP_Library/Inc")
+                    INCLUDE_DIRS "." "../components/S2LP_Library/Inc"
+                    REQUIRES s2lp_console)

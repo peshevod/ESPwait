@@ -11,7 +11,6 @@
 #include <string.h>
 #include "esp_system.h"
 #include "esp_log.h"
-#include "s2lp_console.h"
 #include "esp_console.h"
 #include "esp_vfs_dev.h"
 #include "driver/uart.h"
@@ -22,6 +21,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
+#include "s2lp_console.h"
 
 static const char* TAG = "s2lp_console";
 
@@ -63,7 +63,7 @@ static void initialize_console()
 
 }
 
-void start_console()
+void start_s2lp_console()
 {
     initialize_console();
 
