@@ -17,20 +17,6 @@ typedef struct {
     const char *str;
 } type_str_pair_t;
 
-static const type_str_pair_t type_str_pair[] = {
-    { NVS_TYPE_I8, "i8" },
-    { NVS_TYPE_U8, "u8" },
-    { NVS_TYPE_U16, "u16" },
-    { NVS_TYPE_I16, "i16" },
-    { NVS_TYPE_U32, "u32" },
-    { NVS_TYPE_I32, "i32" },
-    { NVS_TYPE_U64, "u64" },
-    { NVS_TYPE_I64, "i64" },
-    { NVS_TYPE_STR, "str" },
-    { NVS_TYPE_BLOB, "blob" },
-    { NVS_TYPE_ANY, "any" },
-};
-
 // Register NVS functions
 void register_nvs();
 

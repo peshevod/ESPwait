@@ -13,13 +13,27 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include "esp_log.h"
-#include "esp_console.h"
+#include "my_console.h"
 #include "argtable3/argtable3.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_err.h"
 #include "cmd_nvs.h"
 #include "nvs.h"
+
+static const type_str_pair_t type_str_pair[] = {
+    { NVS_TYPE_I8, "i8" },
+    { NVS_TYPE_U8, "u8" },
+    { NVS_TYPE_U16, "u16" },
+    { NVS_TYPE_I16, "i16" },
+    { NVS_TYPE_U32, "u32" },
+    { NVS_TYPE_I32, "i32" },
+    { NVS_TYPE_U64, "u64" },
+    { NVS_TYPE_I64, "i64" },
+    { NVS_TYPE_STR, "str" },
+    { NVS_TYPE_BLOB, "blob" },
+    { NVS_TYPE_ANY, "any" },
+};
 
 _param _params[]=
 {
@@ -45,7 +59,7 @@ _param _params[]=
 
 static const size_t TYPE_STR_PAIR_SIZE = sizeof(type_str_pair) / sizeof(type_str_pair[0]);
 static const char *ARG_TYPE_STR = "type can be: i8, u8, i16, u16 i32, u32 i64, u64, str, blob";
-static char current_namespace[16] = "storage";
+static char current_namespace[16] = "s2lp";
 static const char *TAG = "cmd_nvs";
 
 static struct {
