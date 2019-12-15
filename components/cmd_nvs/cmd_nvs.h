@@ -12,15 +12,11 @@
 extern "C" {
 #endif
 
-typedef struct {
-    nvs_type_t type;
-    const char *str;
-} type_str_pair_t;
-
 typedef struct param
 {
     char c;
     nvs_type_t type;
+    char desc[200];
 } _param;
 
 // Register NVS functions

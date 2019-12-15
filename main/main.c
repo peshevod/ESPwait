@@ -41,11 +41,15 @@ const int WIFI_CONNECTED_BIT = BIT0;
 
 static void initialize_nvs()
 {
-    esp_err_t err = nvs_flash_init_partition("nvs_key");
+    esp_err_t err = nvs_flash_init_partition("s2lp");
 //    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 //        ESP_ERROR_CHECK( nvs_flash_erase() );
 //        err = nvs_flash_init();
 //    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Error: %s", esp_err_to_name(err));
+    }
+
     ESP_ERROR_CHECK(err);
 }
 

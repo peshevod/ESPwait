@@ -24,6 +24,7 @@
 #include "s2lp_console.h"
 
 static const char* TAG = "s2lp_console";
+extern int ex;
 
 static void initialize_console()
 {
@@ -77,13 +78,6 @@ void start_s2lp_console()
      * This can be customized, made dynamic, etc.
      */
     const char* prompt = LOG_COLOR_I "esp32> " LOG_RESET_COLOR;
-
-    printf("\n"
-           "This is an example of ESP-IDF console component.\n"
-           "Type 'help' to get the list of commands.\n"
-           "Use UP/DOWN arrows to navigate through command history.\n"
-           "Press TAB when typing command name to auto-complete.\n");
-
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
     if (probe_status) { /* zero indicates success */
@@ -96,12 +90,12 @@ void start_s2lp_console()
         /* Since the terminal doesn't support escape sequences,
          * don't use color codes in the prompt.
          */
-        prompt = "esp32> ";
+        prompt = "s2lp> ";
 #endif //CONFIG_LOG_COLORS
     }
 
     /* Main loop */
-    while(true) {
+    while(!ex) {
         /* Get a line using linenoise.
          * The line is returned when ENTER is pressed.
          */
