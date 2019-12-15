@@ -14,7 +14,7 @@
 #include <inttypes.h>
 #include "esp_console.h"
 #include "esp_log.h"
-#include "argtable3/argtable3.h"
+//#include "argtable3/argtable3.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_err.h"
@@ -43,12 +43,18 @@ _param _params[]=
 		{0,0,""}
 };
 
-int ex=0;
+uint8_t s2lp_console_ex=0;
 
-//static const size_t TYPE_STR_PAIR_SIZE = sizeof(type_str_pair) / sizeof(type_str_pair[0]);
-//static const char *ARG_TYPE_STR = "type can be: i8, u8, i16, u16 i32, u32 i64, u64, str, blob";
-static char current_namespace[16] = "s2lp";
+static char s2lp_namespace[16] = "s2lp";
+static char s2lp_partition[16] = "s2lp";
 static const char *TAG = "cmd_nvs";
+
+void get_uid(uint32_t* uid)
+{
+	uint8_t mac[6];
+	ESP_ERROR_CHECK(esp_efuse_mac_get_default(mac));
+	memcpy(uid,&(mac[2]),4);
+}
 
 static int key_to_type(char* key)
 {
@@ -63,7 +69,7 @@ static int key_to_type(char* key)
 	return -1;
 }
 
-static esp_err_t set_value_in_nvs(const char *key, const char *str_value)
+static esp_err_t set_value_in_nvs(char *key, const char *str_value)
 {
     esp_err_t err;
     nvs_handle_t nvs;
@@ -77,7 +83,7 @@ static esp_err_t set_value_in_nvs(const char *key, const char *str_value)
 
     nvs_type_t type = _params[itab].type;
 
-    err = nvs_open_from_partition("s2lp", current_namespace, NVS_READWRITE, &nvs);
+    err = nvs_open_from_partition(s2lp_partition, s2lp_namespace, NVS_READWRITE, &nvs);
     if (err != ESP_OK) {
         return err;
     }
@@ -117,7 +123,7 @@ static esp_err_t set_value_in_nvs(const char *key, const char *str_value)
     return err;
 }
 
-static esp_err_t get_value_from_nvs(const char *key, int x)
+static esp_err_t get_value_from_nvs(char *key, int x, void* y)
 {
     nvs_handle_t nvs;
     esp_err_t err;
@@ -130,7 +136,7 @@ static esp_err_t get_value_from_nvs(const char *key, int x)
 
     nvs_type_t type = _params[itab].type;
 
-    err = nvs_open_from_partition("s2lp", current_namespace, NVS_READONLY, &nvs);
+    err = nvs_open_from_partition(s2lp_partition, s2lp_namespace, NVS_READONLY, &nvs);
     if (err != ESP_OK) {
         return err;
     }
@@ -139,20 +145,33 @@ static esp_err_t get_value_from_nvs(const char *key, int x)
         uint8_t value;
         err = nvs_get_u8(nvs, key, &value);
         if (err == ESP_OK) {
-            if(!x) printf("%s=%u    %s\n",key,value,_params[itab].desc);
-            else printf("%s=0x%02X    %s\n",key,value,_params[itab].desc);
+            if(y==NULL)
+            {
+            	if(!x) printf("%s=%u    %s\n",key,value,_params[itab].desc);
+                else printf("%s=0x%02X    %s\n",key,value,_params[itab].desc);
+            }
+            else ((uint8_t*)y)[0]=value;
         }
     } else if (type == NVS_TYPE_I32) {
         int32_t value;
-        if ((err = nvs_get_i32(nvs, key, &value)) == ESP_OK) {
-           if(!x) printf("%s=%d    %s\n", key, value,_params[itab].desc);
-           else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+        if ((err = nvs_get_i32(nvs, key, &value)) == ESP_OK)
+        {
+            if(y==NULL)
+            {
+                if(!x) printf("%s=%d    %s\n", key, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+            }
+            else ((int32_t*)y)[0]=value;
         }
     } else if (type == NVS_TYPE_U32) {
         uint32_t value;
         if ((err = nvs_get_u32(nvs, key, &value)) == ESP_OK) {
-            if(!x) printf("%s=%u    %s\n", key, value,_params[itab].desc);
-            else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+            if(y==NULL)
+            {
+                if(!x) printf("%s=%u    %s\n", key, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+            }
+            else ((uint32_t*)y)[0]=value;
         }
     }
     nvs_close(nvs);
@@ -164,14 +183,14 @@ static int list(int x)
     nvs_handle_t nvs;
     esp_err_t err;
 //    ESP_LOGI(TAG, "Enter in list");
-    err = nvs_open_from_partition("s2lp", current_namespace, NVS_READONLY, &nvs);
+    err = nvs_open_from_partition(s2lp_partition, s2lp_namespace, NVS_READONLY, &nvs);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "%s", esp_err_to_name(err));
         return err;
     }
 //    ESP_LOGI(TAG, "Open namespace %s done",current_namespace);
 
-    nvs_iterator_t it = nvs_entry_find("s2lp", current_namespace, NVS_TYPE_ANY);
+    nvs_iterator_t it = nvs_entry_find(s2lp_partition, s2lp_namespace, NVS_TYPE_ANY);
     if (it == NULL) {
         ESP_LOGE(TAG, "No such enty was found");
         return 1;
@@ -183,27 +202,24 @@ static int list(int x)
         it = nvs_entry_next(it);
         int itab=key_to_type(info.key);
 
-        if(!strcmp(info.namespace_name,current_namespace))
-        {
-            if (info.type == NVS_TYPE_U8) {
-                uint8_t value;
-                err = nvs_get_u8(nvs, info.key, &value);
-                if (err == ESP_OK) {
-                    if(!x) printf("%s=%u    %s\n",info.key,value,_params[itab].desc);
-                    else printf("%s=0x%02X    %s\n",info.key,value,_params[itab].desc);
-                }
-            } else if (info.type == NVS_TYPE_I32) {
-                int32_t value;
-                if ((err = nvs_get_i32(nvs, info.key, &value)) == ESP_OK) {
-                   if(!x) printf("%s=%d    %s\n", info.key, value,_params[itab].desc);
-                   else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
-                }
-            } else if (info.type == NVS_TYPE_U32) {
-                uint32_t value;
-                if ((err = nvs_get_u32(nvs, info.key, &value)) == ESP_OK) {
-                    if(!x) printf("%s=%u    %s\n", info.key, value,_params[itab].desc);
-                    else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
-                }
+        if (info.type == NVS_TYPE_U8) {
+            uint8_t value;
+            err = nvs_get_u8(nvs, info.key, &value);
+            if (err == ESP_OK) {
+                if(!x) printf("%s=%u    %s\n",info.key,value,_params[itab].desc);
+                else printf("%s=0x%02X    %s\n",info.key,value,_params[itab].desc);
+            }
+        } else if (info.type == NVS_TYPE_I32) {
+            int32_t value;
+            if ((err = nvs_get_i32(nvs, info.key, &value)) == ESP_OK) {
+               if(!x) printf("%s=%d    %s\n", info.key, value,_params[itab].desc);
+               else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
+            }
+        } else if (info.type == NVS_TYPE_U32) {
+            uint32_t value;
+            if ((err = nvs_get_u32(nvs, info.key, &value)) == ESP_OK) {
+                if(!x) printf("%s=%u    %s\n", info.key, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
             }
         }
     } while (it != NULL);
@@ -228,8 +244,8 @@ static int get_value(int argc, char **argv)
 {
 //    ESP_LOGI(TAG,"get %s,%s",argv[0],argv[1]);
 	esp_err_t err;
-	if(argc==3 && argv[1][0]=='-' && argv[1][1]=='x') err = get_value_from_nvs(argv[2], 1);
-	else err = get_value_from_nvs(argv[1], 0);
+	if(argc==3 && argv[1][0]=='-' && argv[1][1]=='x') err = get_value_from_nvs(argv[2], 1,NULL);
+	else err = get_value_from_nvs(argv[1], 0,NULL);
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "%s", esp_err_to_name(err));
@@ -241,14 +257,14 @@ static int get_value(int argc, char **argv)
 
 static int list_entries(int argc, char **argv)
 {
-    ESP_LOGI(TAG,"list %d %s",argc,argv[0]);
+//    ESP_LOGI(TAG,"list %d %s",argc,argv[0]);
     if(argc==2 && argv[1][0]=='-' && argv[1][1]=='x') return list(1);
     else return list(0);
 }
 
 static int exit_from_console(int argc, char **argv)
 {
-	ex=1;
+	s2lp_console_ex=1;
 	return 0;
 }
 

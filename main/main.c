@@ -14,7 +14,7 @@
 #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
-#include "shell.h"
+//#include "shell.h"
 #include "s2lp_console.h"
 
 
@@ -189,7 +189,10 @@ static void send_to_cloud_task(void *arg)
 static void get_s2lp_status(void *arg)
 {
 
-//	int i=0;
+	start_s2lp_console();
+	ESP_LOGI(TAG,"exit from console");
+
+	//	int i=0;
 	gpio_set_direction(PIN_NUM_SDN, GPIO_MODE_OUTPUT);
 	gpio_iomux_out(PIN_NUM_CS, FUNC_MTDO_HSPICS0, false);
 //	gpio_set_direction(PIN_NUM_CS, GPIO_MODE_OUTPUT);
@@ -260,20 +263,22 @@ void send_to_cloud(char* mes)
     ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, event_handler));
 }
 
-
 void app_main(void)
 {
 	initialize_nvs();
     tcpip_adapter_init();
     init_uart0();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-//    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
-	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
-	con=0;
+    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
+//	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
+//	con=0;
 //	xTaskCreate(uart_rec_task, "uart_rec_task", 2048, NULL, 10, NULL);
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
 //	start_x_shell();
-	start_s2lp_console();
-    xTaskCreate(get_s2lp_status, "get_s2lp_status", 4096, NULL, 10, NULL);
+    xTaskCreate(get_s2lp_status, "get_s2lp_status", 8192, NULL, 10, NULL);
+    while(1)
+    {
+
+    }
 }

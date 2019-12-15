@@ -9,7 +9,7 @@
 #register_component()
 idf_component_register(SRCS "main.c"
 						    "radio.c"
-						    "shell.c"
+#						    "shell.c"
 						    "spi_intf.c"
-                    INCLUDE_DIRS "." "../components/S2LP_Library/Inc"
-                    REQUIRES s2lp_console)
+                    INCLUDE_DIRS "."
+                    REQUIRES s2lp_console S2LP_Library)

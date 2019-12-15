@@ -21,6 +21,7 @@ typedef struct param
 
 // Register NVS functions
 void register_nvs();
+void get_uid(uint32_t* uid);
 
 #ifdef __cplusplus
 }

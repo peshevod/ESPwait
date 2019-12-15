@@ -15,16 +15,15 @@
 #include "esp_vfs_dev.h"
 #include "driver/uart.h"
 #include "linenoise/linenoise.h"
-#include "argtable3/argtable3.h"
-//#include "cmd_decl.h"
 #include "esp_vfs_fat.h"
+#include "freertos/timers.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
 #include "s2lp_console.h"
 
 static const char* TAG = "s2lp_console";
-extern int ex;
+extern uint8_t s2lp_console_ex;
 
 static void initialize_console()
 {
@@ -64,20 +63,45 @@ static void initialize_console()
 
 }
 
+int volatile s2lp_console_timer_expired;
+
+void vTimerCallback( TimerHandle_t pxTimer )
+{
+	s2lp_console_timer_expired=1;
+}
 void start_s2lp_console()
 {
-    initialize_console();
+	printf("\n Press any key to start console...\n");
+    size_t len;
+    uart_flush_input(UART_NUM_0);
+	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
+    xTimerStart(Timer3,0);
+    s2lp_console_timer_expired=0;
+    while(!s2lp_console_timer_expired)
+    {
+    	uart_get_buffered_data_len(UART_NUM_0,&len);
+    	if (len!=0)
+    	{
+    		uart_flush_input(UART_NUM_0);
+    		break;
+    	}
+    }
+
+    if(xTimerIsTimerActive(Timer3)) xTimerStop(Timer3,0);
+    while(xTimerIsTimerActive(Timer3));
+    xTimerDelete(Timer3,0);
+    if(s2lp_console_timer_expired) return;
+
+	initialize_console();
 
     /* Register commands */
     esp_console_register_help_command();
-//    register_system();
-//    register_wifi();
     register_nvs();
 
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */
-    const char* prompt = LOG_COLOR_I "esp32> " LOG_RESET_COLOR;
+    const char* prompt = LOG_COLOR_I "s2lp> " LOG_RESET_COLOR;
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
     if (probe_status) { /* zero indicates success */
@@ -95,7 +119,7 @@ void start_s2lp_console()
     }
 
     /* Main loop */
-    while(!ex) {
+    while(!s2lp_console_ex) {
         /* Get a line using linenoise.
          * The line is returned when ENTER is pressed.
          */
