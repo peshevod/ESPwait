@@ -190,7 +190,54 @@ static void get_s2lp_status(void *arg)
 {
 
 	start_s2lp_console();
-	ESP_LOGI(TAG,"exit from console");
+    radio_rx_init(packetlen);
+    PIR3bits.RC1IF=0;
+    PIE3bits.RC1IE=1;
+    S2LPCmdStrobeRx();
+    irqf=0;
+    init=-1;
+    while (1)
+    {
+        to_sleep(SLEEP_REC);
+        if(irqf)
+        {
+
+            S2LPTimerLdcIrqWa(S_ENABLE);
+            S2LPGpioIrqGetStatus(&xIrqStatus);
+            if(xIrqStatus.RX_DATA_READY)
+            {
+                //Get the RX FIFO size
+                uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+
+                //Read the RX FIFO
+                S2LPSpiReadFifo(cRxData, vectcRxBuff);
+
+                //Flush the RX FIFO
+                S2LPCmdStrobeFlushRxFifo();
+                send_chars("REC:");
+                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[0],pb));
+                send_chars(" ");
+                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[1],pb));
+                send_chars(" ");
+                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[2],pb));
+                send_chars(" ");
+                send_chars(i32toa(S2LPRadioGetRssidBm(),pb));
+                send_chars("\r\n");
+            }
+            S2LPCmdStrobeSleep();
+            S2LPTimerLdcIrqWa(S_DISABLE);
+            irqf=0;
+        }
+        else
+        {
+            send_chars("MES: I am alive ");
+            send_chars(ui32tox(xc++,pb));
+            send_chars(" ");
+            S2LPRefreshStatus();
+            send_chars(ui8tox(g_xStatus.MC_STATE,pb));
+            send_chars("\r\n");
+        }
+    }
 
 	//	int i=0;
 	gpio_set_direction(PIN_NUM_SDN, GPIO_MODE_OUTPUT);
