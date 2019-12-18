@@ -50,6 +50,12 @@ spi_device_interface_config_t devcfg={
 void init_spi_intf()
 {
 
+	gpio_set_direction(PIN_NUM_SDN, GPIO_MODE_OUTPUT);
+	gpio_iomux_out(PIN_NUM_CS, FUNC_MTDO_HSPICS0, false);
+    gpio_iomux_in(PIN_NUM_MISO, HSPIQ_IN_IDX);
+    gpio_iomux_out(PIN_NUM_MOSI, FUNC_MTCK_HSPID, false);
+    gpio_iomux_out(PIN_NUM_CLK, FUNC_MTMS_HSPICLK, false);
+    gpio_set_level(PIN_NUM_SDN, 0);
 	ret=spi_bus_initialize(HSPI_HOST, &buscfg, 1);
     ESP_ERROR_CHECK(ret);
     printf("bus init ret=%d\n",ret);
