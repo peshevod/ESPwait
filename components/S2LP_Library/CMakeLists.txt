@@ -11,6 +11,7 @@ idf_component_register(SRCS "Src/MCU_interface.c"
 							"Src/S2LP_PktWMbus.c"
 							"Src/S2LP_Qi.c"
 							"Src/S2LP_Radio.c"
+							"Src/S2LP_Timer.c"
 							"Src/S2LP_Timer_ex.c"
 							"Src/S2LP_Types.c"
                     INCLUDE_DIRS "./Inc")

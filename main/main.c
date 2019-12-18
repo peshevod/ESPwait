@@ -5,17 +5,20 @@
 #include "freertos/event_groups.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
-#include "main.h"
 #include <string.h>
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_event_loop.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
 //#include "shell.h"
 #include "s2lp_console.h"
+#include "main.h"
+#include "S2LP_Config.h"
+#include "radio.h"
 
 
 static QueueHandle_t uart2_queue;
@@ -181,101 +184,77 @@ static void send_to_cloud_task(void *arg)
 	while(1)
 	{
 		send_to_cloud("test");
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
+		vTaskDelay(1000*portTICK_PERIOD_MS);
 	}
 
 }
 
-static void get_s2lp_status(void *arg)
+static xQueueHandle s2lp_evt_queue = NULL;
+static uint8_t packetlen=12;
+static S2LPIrqs xIrqStatus;
+static uint8_t vectcRxBuff[MAX_REC_SIZE];
+
+static void IRAM_ATTR s2lp_intr_handler(void* arg)
+{
+    S2LPGpioIrqGetStatus(&xIrqStatus);
+    if(xIrqStatus.RX_DATA_READY)
+    {
+        //Get the RX FIFO size
+        uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+        //Read the RX FIFO
+        S2LPSpiReadFifo(cRxData, vectcRxBuff);
+        //Flush the RX FIFO
+        S2LPCmdStrobeFlushRxFifo();
+        S2LPCmdStrobeSleep();
+        S2LPTimerLdcIrqWa(S_DISABLE);
+        xQueueSendFromISR(s2lp_evt_queue,vectcRxBuff,0);
+    }
+
+}
+
+
+static void s2lp_wait(void *arg)
 {
 
 	start_s2lp_console();
+    gpio_config_t io_conf;
+    //interrupt of rising edge
+    io_conf.intr_type = GPIO_INTR_LOW_LEVEL;
+    //bit mask of the pins, use GPIO4/5 here
+    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+    //set as input mode
+    io_conf.mode = GPIO_MODE_INPUT;
+    //disable pull-down mode
+    io_conf.pull_down_en = 0;
+    //disable pull-up mode
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+    //install gpio isr service
+    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3);
+    //hook isr handler for specific gpio pin
+    gpio_isr_handler_add(GPIO_INPUT_IO_0, s2lp_intr_handler, (void*) GPIO_INPUT_IO_0);
+
     radio_rx_init(packetlen);
-    PIR3bits.RC1IF=0;
-    PIE3bits.RC1IE=1;
     S2LPCmdStrobeRx();
-    irqf=0;
-    init=-1;
+    uint32_t vect[3];
+    s2lp_evt_queue = xQueueCreate(10, packetlen);
+    int32_t t=600;
+    uint32_t xc=0;
     while (1)
     {
-        to_sleep(SLEEP_REC);
-        if(irqf)
+//        to_sleep(SLEEP_REC);
+        if(xQueueReceive(s2lp_evt_queue,vect,100*portTICK_PERIOD_MS))
         {
-
-            S2LPTimerLdcIrqWa(S_ENABLE);
-            S2LPGpioIrqGetStatus(&xIrqStatus);
-            if(xIrqStatus.RX_DATA_READY)
-            {
-                //Get the RX FIFO size
-                uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
-
-                //Read the RX FIFO
-                S2LPSpiReadFifo(cRxData, vectcRxBuff);
-
-                //Flush the RX FIFO
-                S2LPCmdStrobeFlushRxFifo();
-                send_chars("REC:");
-                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[0],pb));
-                send_chars(" ");
-                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[1],pb));
-                send_chars(" ");
-                send_chars(ui32tox(((uint32_t*)vectcRxBuff)[2],pb));
-                send_chars(" ");
-                send_chars(i32toa(S2LPRadioGetRssidBm(),pb));
-                send_chars("\r\n");
-            }
-            S2LPCmdStrobeSleep();
-            S2LPTimerLdcIrqWa(S_DISABLE);
-            irqf=0;
-        }
-        else
+        	printf("REC: 0x%08X 0x%08X 0x%08X\n",vect[0],vect[1],vect[2]);
+        };
+        t--;
+        if(t<=0)
         {
-            send_chars("MES: I am alive ");
-            send_chars(ui32tox(xc++,pb));
-            send_chars(" ");
-            S2LPRefreshStatus();
-            send_chars(ui8tox(g_xStatus.MC_STATE,pb));
-            send_chars("\r\n");
+        	printf("i am alive 0x%08X\n",xc);
+        	t=600;
+        	xc++;
         }
     }
-
-	//	int i=0;
-	gpio_set_direction(PIN_NUM_SDN, GPIO_MODE_OUTPUT);
-	gpio_iomux_out(PIN_NUM_CS, FUNC_MTDO_HSPICS0, false);
-//	gpio_set_direction(PIN_NUM_CS, GPIO_MODE_OUTPUT);
-//	gpio_iomux_out(PIN_NUM_MISO, FUNC_MTDI_HSPIQ, false);
-	gpio_iomux_in(PIN_NUM_MISO, HSPIQ_IN_IDX);
-	//	gpio_set_direction(PIN_NUM_MISO, GPIO_MODE_OUTPUT);
-	gpio_iomux_out(PIN_NUM_MOSI, FUNC_MTCK_HSPID, false);
-//	gpio_set_direction(PIN_NUM_MOSI, GPIO_MODE_OUTPUT);
-	gpio_iomux_out(PIN_NUM_CLK, FUNC_MTMS_HSPICLK, false);
-//	gpio_set_direction(PIN_NUM_CLK, GPIO_MODE_OUTPUT);
-	gpio_set_level(PIN_NUM_SDN, 0);
-	init_spi_intf();
-	while(1)
-	{
-/*		if(i==0)
-		{
-			gpio_set_level(PIN_NUM_SDN, 0);
-			gpio_set_level(PIN_NUM_CS, 1);
-			gpio_set_level(PIN_NUM_MISO, 1);
-			gpio_set_level(PIN_NUM_MOSI, 1);
-			gpio_set_level(PIN_NUM_CLK, 1);
-			i=1;
-		}
-		else
-		{
-			gpio_set_level(PIN_NUM_SDN, 1);
-			gpio_set_level(PIN_NUM_CS, 0);
-			gpio_set_level(PIN_NUM_MISO, 0);
-			gpio_set_level(PIN_NUM_MOSI, 0);
-			gpio_set_level(PIN_NUM_CLK, 0);
-			i=0;
-		}*/
-		get_status();
-		vTaskDelay(100 / portTICK_PERIOD_MS);
-	}
-
 }
 
 void send_to_cloud(char* mes)
@@ -315,15 +294,15 @@ void app_main(void)
 	initialize_nvs();
     tcpip_adapter_init();
     init_uart0();
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
+//    ESP_ERROR_CHECK(esp_event_loop_create_default());
+//    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
 //	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
 //	con=0;
 //	xTaskCreate(uart_rec_task, "uart_rec_task", 2048, NULL, 10, NULL);
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
 //	start_x_shell();
-    xTaskCreate(get_s2lp_status, "get_s2lp_status", 8192, NULL, 10, NULL);
+    xTaskCreate(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL);
     while(1)
     {
 

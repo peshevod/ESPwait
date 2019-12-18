@@ -7,6 +7,6 @@
 # set(COMPONENT_ADD_INCLUDEDIRS ". S2LP_Library/Inc")
 
 #register_component()
-idf_component_register(SRCS main.c
+idf_component_register(SRCS radio.c
                     INCLUDE_DIRS "."
-                    REQUIRES s2lp_console S2LP_Library cmd_nvs radio)
+                    REQUIRES S2LP_Library cmd_nvs)

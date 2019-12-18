@@ -22,8 +22,12 @@
 #define BUF_SIZE (256)
 #define MAX_MESSAGE_SIZE (64)
 #define MAX_MESSAGES_IN_QUEUE (16)
+#define MAX_REC_SIZE 128
 
 #define ESP_MAXIMUM_RETRY (3)
+
+#define GPIO_INPUT_IO_0     4
+#define GPIO_INPUT_PIN_SEL  (1ULL<<GPIO_INPUT_IO_0)
 
 void init_uart0();
 void init_uart2();
@@ -31,4 +35,7 @@ static void uart_rec_task(void *arg);
 void send_to_cloud(char* mes);
 static void queue_watch_task(void *arg);
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
+static void IRAM_ATTR s2lp_intr_handler(void* arg);
+static void s2lp_wait(void *arg);
+
 #endif /* MAIN_MAIN_H_ */

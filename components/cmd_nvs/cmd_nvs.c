@@ -123,7 +123,7 @@ static esp_err_t set_value_in_nvs(char *key, const char *str_value)
     return err;
 }
 
-static esp_err_t get_value_from_nvs(char *key, int x, void* y)
+esp_err_t get_value_from_nvs(char *key, int x, void* y)
 {
     nvs_handle_t nvs;
     esp_err_t err;
