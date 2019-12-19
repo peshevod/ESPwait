@@ -107,7 +107,7 @@ StatusBytes S2LPSpiReadRegisters(uint8_t cRegAddress, uint8_t cNbBytes, uint8_t*
 	t.flags=0;
 	t.tx_buffer=myWriteBuffer;
 	t.rx_buffer=myReadBuffer;
-	t.length=8*cNbBytes;
+	t.length=16+8*cNbBytes;
 	t.rxlength=0;
 	ret=spi_device_polling_transmit(spi, &t);
 	ESP_ERROR_CHECK(ret);
@@ -146,7 +146,7 @@ StatusBytes S2LPSpiWriteFifo(uint8_t cNbBytes, uint8_t* pcBuffer)
 	t.flags=0;
 	t.tx_buffer=myWriteBuffer;
 	t.rx_buffer=myReadBuffer;
-	t.length=8*cNbBytes;
+	t.length=16+8*cNbBytes;
 	t.rxlength=0;
 	ret=spi_device_polling_transmit(spi, &t);
 	ESP_ERROR_CHECK(ret);
@@ -166,7 +166,7 @@ StatusBytes S2LPSpiReadFifo(uint8_t cNbBytes, uint8_t* pcBuffer)
 	t.flags=0;
 	t.tx_buffer=myWriteBuffer;
 	t.rx_buffer=myReadBuffer;
-	t.length=8*cNbBytes;
+	t.length=16+8*cNbBytes;
 	t.rxlength=0;
 	ret=spi_device_polling_transmit(spi, &t);
 	ESP_ERROR_CHECK(ret);
