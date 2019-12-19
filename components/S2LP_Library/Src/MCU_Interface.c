@@ -175,7 +175,7 @@ StatusBytes S2LPSpiReadFifo(uint8_t cNbBytes, uint8_t* pcBuffer)
 
 /*void write_reg(uint8_t ad,uint8_t value)
 {
-    myWriteBuffer[0]=OP_WRITE;
+     myWriteBuffer[0]=OP_WRITE;
     myWriteBuffer[1]=ad;
     myWriteBuffer[2]=value;
     CSN_SetLow();
