@@ -212,40 +212,33 @@ static void IRAM_ATTR s2lp_intr_handler(void* arg)
 
 }
 
-void test_gpio(S2LPGpioPin pin,gpio_num_t gpio_num)
+void test_gpio(void)
 {
-/*    gpio_config_t io_conf;
-    //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //bit mask of the pins, use GPIO4/5 here
-    io_conf.pin_bit_mask = (1ULL<<gpio_num);
-    //set as input mode
-    io_conf.mode = GPIO_MODE_INPUT;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);*/
 
-	gpio_iomux_out(gpio_num, 2, false);
-	gpio_set_direction(gpio_num, GPIO_MODE_INPUT);
+	gpio_num_t gpio_nums[4]={4,2,26,25};
 
+	S2LPSpiInit();
+	S2LPExitShutdown();
 
-    S2LPSpiInit();
-    S2LPExitShutdown();
-
-    OutputLevel ol=OUTPUT_LOW;
-
-	while(1)
+	for(S2LPGpioPin pin=0;pin<4;pin++)
 	{
-		S2LPGpioSetLevel(pin,ol);
-		printf("Status 0x%02X 0x%02X\n",g_xStatus.MC_STATE,g_xStatus.XO_ON);
-		vTaskDelay(500 / portTICK_PERIOD_MS);
-		int level=gpio_get_level(gpio_num);
-		if((level && ol) || (!level && !ol)) printf("ol=%d S2LPPin %d GPIO %d - OK\n",ol,pin,gpio_num);
-		else printf("ol=%d S2LPPin %d GPIO %d - FAIL\n",ol,pin,gpio_num);
-		ol=1-ol;
-		vTaskDelay(500 / portTICK_PERIOD_MS);
+		gpio_iomux_out(gpio_nums[pin], 2, false);
+		gpio_set_direction(gpio_nums[pin], GPIO_MODE_INPUT);
+		printf("\nTest of s2lppin %d and gpio_pin %d:\n",pin,gpio_nums[pin]);
+
+		OutputLevel ol=OUTPUT_LOW;
+
+		for(int j=0;j<4;j++)
+		{
+			S2LPGpioSetLevel(pin,ol);
+			printf("Status 0x%02X 0x%02X\n",g_xStatus.MC_STATE,g_xStatus.XO_ON);
+			vTaskDelay(500 / portTICK_PERIOD_MS);
+			int il=gpio_get_level(gpio_nums[pin]);
+			if((il && ol) || (!il && !ol)) printf("outputlevel=%d inputlevel=%d S2LPPin %d GPIO %d - OK\n",ol,il,pin,gpio_nums[pin]);
+			else printf("outputlevel=%d inputlevel=%d S2LPPin %d GPIO %d - FAIL\n",ol,il,pin,gpio_nums[pin]);
+			ol=1-ol;
+			vTaskDelay(500 / portTICK_PERIOD_MS);
+		}
 	}
 
 }
@@ -255,7 +248,7 @@ static void s2lp_wait(void *arg)
 
 	start_s2lp_console();
 
-	test_gpio(S2LP_GPIO_0,GPIO_NUM_4);
+	test_gpio();
 
     gpio_config_t io_conf;
     //interrupt of rising edge

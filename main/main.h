@@ -37,5 +37,6 @@ static void queue_watch_task(void *arg);
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void IRAM_ATTR s2lp_intr_handler(void* arg);
 static void s2lp_wait(void *arg);
+void test_gpio(void);
 
 #endif /* MAIN_MAIN_H_ */
