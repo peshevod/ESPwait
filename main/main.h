@@ -4,8 +4,6 @@
  *  Created on: 6 но€б. 2019 г.
  *      Author: ilya
  */
-#include "esp_event.h"
-
 #ifndef MAIN_MAIN_H_
 #define MAIN_MAIN_H_
 
@@ -29,6 +27,8 @@
 #define GPIO_INPUT_IO_0     4
 #define GPIO_INPUT_PIN_SEL  (1ULL<<GPIO_INPUT_IO_0)
 
+#define PACKETLEN 12
+
 void init_uart0();
 void init_uart2();
 static void uart_rec_task(void *arg);
@@ -38,5 +38,12 @@ static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_
 static void IRAM_ATTR s2lp_intr_handler(void* arg);
 static void s2lp_wait(void *arg);
 void test_gpio(void);
+
+typedef struct
+{
+	int32_t input_signal_power;
+	uint32_t data[PACKETLEN/4];
+} input_data;
+
 
 #endif /* MAIN_MAIN_H_ */

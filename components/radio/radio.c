@@ -1,8 +1,10 @@
+#include "esp_log.h"
 #include "S2LP_Config.h"
 #include "radio.h"
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
 
+static const char* TAG = "Radio";
 extern uint8_t bypass_ldo;
 //extern volatile uint8_t irqf;
 //extern char val_buf[BUF_LEN];
@@ -55,14 +57,18 @@ void radio_init(uint8_t packetlen)
     get_value_from_nvs("W", 0, &xRadioInit.lBandwidth);
     get_value_from_nvs("D", 0, &xRadioInit.lFreqDev);
 
+    ESP_LOGI(TAG,"nvs FMRWD done");
+
     /* S2LP ON */
     S2LPEnterShutdown();
     S2LPExitShutdown();
     
+    ESP_LOGI(TAG,"ExitShutdown done");
     S2LPRadioSetXtalFrequency(XTAL_FREQ);
 
     /* S2LP IRQ config */
     S2LPGpioInit(&xGpioIRQ);
+    ESP_LOGI(TAG,"GpioIRQ done");
     
     /* S2LP Radio config */
     S2LPRadioInit(&xRadioInit);

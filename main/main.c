@@ -11,6 +11,8 @@
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_event_loop.h"
+#include "esp_int_wdt.h"
+#include "esp_task_wdt.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
@@ -189,27 +191,28 @@ static void send_to_cloud_task(void *arg)
 
 }
 
-static xQueueHandle s2lp_evt_queue = NULL;
-static uint8_t packetlen=12;
+static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
-static uint8_t vectcRxBuff[MAX_REC_SIZE];
+
 
 static void IRAM_ATTR s2lp_intr_handler(void* arg)
 {
-    S2LPGpioIrqGetStatus(&xIrqStatus);
+	input_data data;
+    S2LPTimerLdcIrqWa(S_ENABLE);
+	S2LPGpioIrqGetStatus(&xIrqStatus);
     if(xIrqStatus.RX_DATA_READY)
     {
         //Get the RX FIFO size
         uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
         //Read the RX FIFO
-        S2LPSpiReadFifo(cRxData, vectcRxBuff);
+        S2LPSpiReadFifo(cRxData, data.data);
         //Flush the RX FIFO
         S2LPCmdStrobeFlushRxFifo();
+        data.input_signal_power=S2LPRadioGetRssidBm();
         S2LPCmdStrobeSleep();
-        S2LPTimerLdcIrqWa(S_DISABLE);
-        xQueueSendFromISR(s2lp_evt_queue,vectcRxBuff,0);
+        xQueueSendFromISR(s2lp_evt_queue,&data,0);
     }
-
+    S2LPTimerLdcIrqWa(S_DISABLE);
 }
 
 void test_gpio(void)
@@ -217,8 +220,6 @@ void test_gpio(void)
 
 	gpio_num_t gpio_nums[4]={4,2,26,25};
 
-	S2LPSpiInit();
-	S2LPExitShutdown();
 
 	for(S2LPGpioPin pin=0;pin<4;pin++)
 	{
@@ -245,49 +246,91 @@ void test_gpio(void)
 
 static void s2lp_wait(void *arg)
 {
-
-	start_s2lp_console();
-
-	test_gpio();
-
-    gpio_config_t io_conf;
-    //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_LOW_LEVEL;
-    //bit mask of the pins, use GPIO4/5 here
-    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
-    //set as input mode
-    io_conf.mode = GPIO_MODE_INPUT;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
-    //install gpio isr service
-    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3);
-    //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(GPIO_INPUT_IO_0, s2lp_intr_handler, (void*) GPIO_INPUT_IO_0);
-
-    radio_rx_init(packetlen);
-    S2LPCmdStrobeRx();
-    uint32_t vect[3];
-    s2lp_evt_queue = xQueueCreate(10, packetlen);
+    input_data data;
     int32_t t=600;
     uint32_t xc=0;
     while (1)
     {
-//        to_sleep(SLEEP_REC);
-        if(xQueueReceive(s2lp_evt_queue,vect,100/portTICK_PERIOD_MS))
+    	if(s2lp_evt_queue==NULL)
+		{
+    		vTaskDelay(100/portTICK_PERIOD_MS);
+    		continue;
+		}
+    	if(xQueueReceive(s2lp_evt_queue,&data,100/portTICK_PERIOD_MS))
         {
-        	printf("REC: 0x%08X 0x%08X 0x%08X\n",vect[0],vect[1],vect[2]);
+        	printf("REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
         };
         t--;
         if(t<=0)
         {
-        	printf("i am alive 0x%08X\n",xc);
+        	ESP_LOGI(TAG,"i am alive 0x%08X\n",xc);
         	t=600;
         	xc++;
         }
     }
+
+}
+
+static void s2lp_rec_start(void *arg)
+{
+
+	S2LPSpiInit();
+	S2LPExitShutdown();
+
+	start_s2lp_console();
+
+//	test_gpio();
+
+    radio_rx_init(PACKETLEN);
+    ESP_LOGI(TAG,"radio_rx_init proceed");
+
+    gpio_config_t io_conf;
+    //interrupt of rising edge
+    io_conf.intr_type = GPIO_INTR_LOW_LEVEL;
+    ESP_LOGI(TAG,"intr level set low");
+    //bit mask of the pins, use GPIO4/5 here
+    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+     ESP_LOGI(TAG,"pin set 0x%016llX",io_conf.pin_bit_mask);
+   //set as input mode
+    io_conf.mode = GPIO_MODE_INPUT;
+    ESP_LOGI(TAG,"gpio mode set input");
+    //disable pull-down mode
+    io_conf.pull_down_en = 0;
+    //disable pull-up mode
+    io_conf.pull_up_en = 0;
+    ESP_LOGI(TAG,"pullup disabled");
+    gpio_config(&io_conf);
+    ESP_LOGI(TAG,"gpio set");
+    //install gpio isr service
+    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
+    ESP_LOGI(TAG,"isr service set");
+    //hook isr handler for specific gpio pin
+    gpio_isr_handler_add(GPIO_INPUT_IO_0, s2lp_intr_handler, (void*) GPIO_INPUT_IO_0);
+    ESP_LOGI(TAG,"handler added to isr service");
+
+	S2LPGpioIrqGetStatus(&xIrqStatus);
+
+    ESP_LOGI(TAG,"s2lp irq Status get");
+    S2LPCmdStrobeRx();
+    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data));
+/*    input_data data;
+    int32_t t=600;
+    uint32_t xc=0;
+    while (1)
+    {
+    	if(xQueueReceive(s2lp_evt_queue,&data,100/portTICK_PERIOD_MS))
+        {
+        	printf("REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
+        };
+        t--;
+        if(t<=0)
+        {
+        	ESP_LOGI(TAG,"i am alive 0x%08X\n",xc);
+        	t=600;
+        	xc++;
+        }
+    }*/
+    while(1) vTaskDelay(60000);
 }
 
 void send_to_cloud(char* mes)
@@ -335,7 +378,8 @@ void app_main(void)
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
 //	start_x_shell();
-    xTaskCreate(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL);
+    xTaskCreatePinnedToCore(s2lp_rec_start, "s2lp_rec_start", 8192, NULL, 10, NULL,1);
+    xTaskCreatePinnedToCore(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL,0);
     while(1)
     {
 

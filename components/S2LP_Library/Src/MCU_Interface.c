@@ -170,6 +170,10 @@ StatusBytes S2LPSpiReadFifo(uint8_t cNbBytes, uint8_t* pcBuffer)
 	t.rxlength=0;
 	ret=spi_device_polling_transmit(spi, &t);
 	ESP_ERROR_CHECK(ret);
+    for(uint8_t j=0;j<cNbBytes;j++)
+    {
+        pcBuffer[j] = myReadBuffer[j+2];
+    }
     return STATUS0;
 }
 
