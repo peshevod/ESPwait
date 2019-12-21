@@ -1,1 +1,0 @@
-D:\Downloads\Software\Espressif\.espressif\python_env\idf4.0_py3.8_env\Scripts\python.exe D:\Downloads\Software\Espressif\ESP-IDF\components\nvs_flash\nvs_partition_generator\nvs_partition_gen.py generate nvs.csv nvs.bin 0x3000

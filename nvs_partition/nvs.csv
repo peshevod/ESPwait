@@ -1,5 +1,7 @@
 key,type,encoding,value
 s2lp,namespace,,
+SSID,data,string,Paritet
+PASSWD,data,string,narrowcartoon617
 F,data,u32,433000000
 M,data,u8,160
 R,data,u32,12500

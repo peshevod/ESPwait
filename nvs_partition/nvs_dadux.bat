@@ -1,0 +1,1 @@
+%IDF_TOOLS_PATH%\python_env\idf4.0_py3.7_env\Scripts\python.exe D:\Espressif\ESP-IDF\components\nvs_flash\nvs_partition_generator\nvs_partition_gen.py generate nvs.csv s2lp.bin 0x3000

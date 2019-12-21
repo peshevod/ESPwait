@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include "esp_console.h"
 #include "esp_log.h"
@@ -23,24 +24,26 @@
 
 _param _params[]=
 {
-		{'F',NVS_TYPE_U32, "Base frequency, Hz"},
-	    {'M',NVS_TYPE_U8, "Modulation 0x00: 2-FSK, 0x10: 4-FSK, 0x20: 2-GFSK BT=1, 0x30: 4-GFSK BT=1, 0x50: ASK/OOK, 0x60: polar, 0x70: no mod, 0xa0: 2-GFSK BT=0.5, 0xb0: 4-GFSK BT=0.5"},
-	    {'R',NVS_TYPE_U32,"Datarate bit/s"},
-	    {'W',NVS_TYPE_U32,"Bandwidth, Hz"},
-	    {'D',NVS_TYPE_U32, "Frequency deviation, Hz"},
-	    {'S',NVS_TYPE_U32, "Channel spacing, Hz"},
-		{'P',NVS_TYPE_I32, "Power, dbm"},
-	    {'T',NVS_TYPE_U8, "Mode 1: transmit, 0: receive"},
-	    {'L',NVS_TYPE_U8, "LDO bypass 1: yes, 0 no"},
-	    {'C',NVS_TYPE_I32, "Channel number"},
-	    {'E',NVS_TYPE_U32, "Preamble length - number of 01 or 10 sequencies"},
-	    {'N',NVS_TYPE_U32, "ID - not used, now id is low 4 bytes of MAC address"},
-	    {'I',NVS_TYPE_U32, "Interval between actions (trans or rec), sec."},
-	    {'X',NVS_TYPE_U8, "Number of repeated messages in trans mode"},
-		{'Y',NVS_TYPE_U8, "Sensor JP4 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP4 1 - norm, 0 - alarm"},
-		{'Z',NVS_TYPE_U8, "Sensor JP5 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP5 1 - norm, 0 - alarm"},
-		{'G',NVS_TYPE_U8, "CRC mode - 0x00 -NO CRC, 0x20 - 8 bit, 0x40 - 16 bit 0x8005, 0x60 - 16 bit 0x1021"},
-		{0,0,""}
+		{"F",NVS_TYPE_U32, "Base frequency, Hz"},
+	    {"M",NVS_TYPE_U8, "Modulation 0x00: 2-FSK, 0x10: 4-FSK, 0x20: 2-GFSK BT=1, 0x30: 4-GFSK BT=1, 0x50: ASK/OOK, 0x60: polar, 0x70: no mod, 0xa0: 2-GFSK BT=0.5, 0xb0: 4-GFSK BT=0.5"},
+	    {"R",NVS_TYPE_U32,"Datarate bit/s"},
+	    {"W",NVS_TYPE_U32,"Bandwidth, Hz"},
+	    {"D",NVS_TYPE_U32, "Frequency deviation, Hz"},
+	    {"S",NVS_TYPE_U32, "Channel spacing, Hz"},
+		{"P",NVS_TYPE_I32, "Power, dbm"},
+	    {"T",NVS_TYPE_U8, "Mode 1: transmit, 0: receive"},
+	    {"L",NVS_TYPE_U8, "LDO bypass 1: yes, 0 no"},
+	    {"C",NVS_TYPE_I32, "Channel number"},
+	    {"E",NVS_TYPE_U32, "Preamble length - number of 01 or 10 sequencies"},
+	    {"N",NVS_TYPE_U32, "ID - not used, now id is low 4 bytes of MAC address"},
+	    {"I",NVS_TYPE_U32, "Interval between actions (trans or rec), sec."},
+	    {"X",NVS_TYPE_U8, "Number of repeated messages in trans mode"},
+		{"Y",NVS_TYPE_U8, "Sensor JP4 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP4 1 - norm, 0 - alarm"},
+		{"Z",NVS_TYPE_U8, "Sensor JP5 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP5 1 - norm, 0 - alarm"},
+		{"G",NVS_TYPE_U8, "CRC mode - 0x00 -NO CRC, 0x20 - 8 bit, 0x40 - 16 bit 0x8005, 0x60 - 16 bit 0x1021"},
+		{"SSID",NVS_TYPE_STR,"SSID"},
+		{"PASSWD",NVS_TYPE_STR,"Password for ssid"},
+		{"",0,""}
 };
 
 uint8_t s2lp_console_ex=0;
@@ -48,6 +51,7 @@ uint8_t s2lp_console_ex=0;
 static char s2lp_namespace[16] = "s2lp";
 static char s2lp_partition[16] = "s2lp";
 static const char *TAG = "cmd_nvs";
+static char key0[16];
 
 void get_uid(uint32_t* uid)
 {
@@ -60,10 +64,15 @@ static int key_to_type(char* key)
 {
 
 	int i=0;
-	if(key[0]<=0x7A && key[0]>=0x61) key[0]-=0x20;
-	while(_params[i].c!=0)
+    while (key[i]) {
+    	key0[i] = toupper((unsigned char) key[i]);
+    	i++;
+    }
+    key0[i]=0;
+    i=0;
+	while(_params[i].type!=0)
 	{
-		if(_params[i].c==key[0]) return i;
+		if(!strcmp(key0,_params[i].c)) return i;
 		i++;
 	}
 	return -1;
@@ -93,19 +102,22 @@ static esp_err_t set_value_in_nvs(char *key, const char *str_value)
         if (value > UINT8_MAX || errno == ERANGE) {
             range_error = true;
         } else {
-            err = nvs_set_u8(nvs, key, (uint8_t)value);
+            err = nvs_set_u8(nvs, key0, (uint8_t)value);
         }
     } else if (type == NVS_TYPE_I32) {
         int32_t value = strtol(str_value, NULL, 0);
         if (errno != ERANGE) {
-            err = nvs_set_i32(nvs, key, value);
+            err = nvs_set_i32(nvs, key0, value);
         }
     } else if (type == NVS_TYPE_U32) {
         uint32_t value = strtoul(str_value, NULL, 0);
         if (errno != ERANGE) {
-            err = nvs_set_u32(nvs, key, value);
+            err = nvs_set_u32(nvs, key0, value);
         }
+    }  else if (type == NVS_TYPE_STR) {
+	   err = nvs_set_str(nvs, key0, str_value);
     }
+
 
     if (range_error || errno == ERANGE) {
         nvs_close(nvs);
@@ -114,9 +126,9 @@ static esp_err_t set_value_in_nvs(char *key, const char *str_value)
 
     if (err == ESP_OK) {
         err = nvs_commit(nvs);
-        if (err == ESP_OK) {
+//        if (err == ESP_OK) {
 //            ESP_LOGI(TAG, "Value stored under key '%s'", key);
-        }
+//        }
     }
 
     nvs_close(nvs);
@@ -143,37 +155,49 @@ esp_err_t get_value_from_nvs(char *key, int x, void* y)
 
     if (type == NVS_TYPE_U8) {
         uint8_t value;
-        err = nvs_get_u8(nvs, key, &value);
+        err = nvs_get_u8(nvs, key0, &value);
         if (err == ESP_OK) {
             if(y==NULL)
             {
-            	if(!x) printf("%s=%u    %s\n",key,value,_params[itab].desc);
-                else printf("%s=0x%02X    %s\n",key,value,_params[itab].desc);
+            	if(!x) printf("%s=%u    %s\n",key0,value,_params[itab].desc);
+                else printf("%s=0x%02X    %s\n",key0,value,_params[itab].desc);
             }
             else ((uint8_t*)y)[0]=value;
         }
     } else if (type == NVS_TYPE_I32) {
         int32_t value;
-        if ((err = nvs_get_i32(nvs, key, &value)) == ESP_OK)
+        if ((err = nvs_get_i32(nvs, key0, &value)) == ESP_OK)
         {
             if(y==NULL)
             {
-                if(!x) printf("%s=%d    %s\n", key, value,_params[itab].desc);
-                else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+                if(!x) printf("%s=%d    %s\n", key0, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", key0, value,_params[itab].desc);
             }
             else ((int32_t*)y)[0]=value;
         }
     } else if (type == NVS_TYPE_U32) {
         uint32_t value;
-        if ((err = nvs_get_u32(nvs, key, &value)) == ESP_OK) {
+        if ((err = nvs_get_u32(nvs, key0, &value)) == ESP_OK) {
             if(y==NULL)
             {
-                if(!x) printf("%s=%u    %s\n", key, value,_params[itab].desc);
-                else printf("%s=0x%08X    %s\n", key, value,_params[itab].desc);
+                if(!x) printf("%s=%u    %s\n", key0, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", key0, value,_params[itab].desc);
             }
             else ((uint32_t*)y)[0]=value;
         }
+    } else if (type == NVS_TYPE_STR) {
+    	size_t len;
+    	nvs_get_str(nvs, key0, NULL,&len);
+    	char* str_value=malloc(len);
+    	if ((err = nvs_get_str(nvs, key0, str_value,&len)) == ESP_OK) {
+    		if(y==NULL)
+    		{
+    			printf("%s=%s    %s\n", key0, str_value,_params[itab].desc);
+    		} else strcpy((char*)y,str_value);
+    		free(str_value);
+		}
     }
+
     nvs_close(nvs);
     return err;
 }
@@ -201,27 +225,37 @@ static int list(int x)
         nvs_entry_info(it, &info);
         it = nvs_entry_next(it);
         int itab=key_to_type(info.key);
+//        ESP_LOGI(TAG,"info.key %s key0 %s type %d",info.key,key0,info.type);
 
         if (info.type == NVS_TYPE_U8) {
             uint8_t value;
-            err = nvs_get_u8(nvs, info.key, &value);
+            err = nvs_get_u8(nvs, key0, &value);
             if (err == ESP_OK) {
-                if(!x) printf("%s=%u    %s\n",info.key,value,_params[itab].desc);
-                else printf("%s=0x%02X    %s\n",info.key,value,_params[itab].desc);
+                if(!x) printf("%s=%u    %s\n",key0,value,_params[itab].desc);
+                else printf("%s=0x%02X    %s\n",key0,value,_params[itab].desc);
             }
         } else if (info.type == NVS_TYPE_I32) {
             int32_t value;
-            if ((err = nvs_get_i32(nvs, info.key, &value)) == ESP_OK) {
-               if(!x) printf("%s=%d    %s\n", info.key, value,_params[itab].desc);
-               else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
+            if ((err = nvs_get_i32(nvs, key0, &value)) == ESP_OK) {
+               if(!x) printf("%s=%d    %s\n", key0, value,_params[itab].desc);
+               else printf("%s=0x%08X    %s\n", key0, value,_params[itab].desc);
             }
         } else if (info.type == NVS_TYPE_U32) {
             uint32_t value;
-            if ((err = nvs_get_u32(nvs, info.key, &value)) == ESP_OK) {
-                if(!x) printf("%s=%u    %s\n", info.key, value,_params[itab].desc);
-                else printf("%s=0x%08X    %s\n", info.key, value,_params[itab].desc);
+            if ((err = nvs_get_u32(nvs, key0, &value)) == ESP_OK) {
+                if(!x) printf("%s=%u    %s\n", key0, value,_params[itab].desc);
+                else printf("%s=0x%08X    %s\n", key0, value,_params[itab].desc);
             }
+        } else if (info.type == NVS_TYPE_STR) {
+        	size_t len;
+        	nvs_get_str(nvs, key0, NULL,&len);
+        	char* str_value=malloc(len);
+        	if ((err = nvs_get_str(nvs, key0, str_value,&len)) == ESP_OK) {
+				printf("%s=%s    %s\n", key0, str_value,_params[itab].desc);
+    		}
+        	free(str_value);
         }
+
     } while (it != NULL);
     nvs_close(nvs);
     return 0;

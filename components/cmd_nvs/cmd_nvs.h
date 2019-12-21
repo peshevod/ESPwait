@@ -14,7 +14,7 @@ extern "C" {
 
 typedef struct param
 {
-    char c;
+    char c[16];
     nvs_type_t type;
     char desc[200];
 } _param;
