@@ -152,6 +152,8 @@ void radio_rx_init(uint8_t packetlen)
       .cRssiThreshdBm = -85,
     };
    
+    get_value_from_nvs("V", 0, &xSRssiInit.cRssiThreshdBm);
+
     S2LPRadioRssiInit(&xSRssiInit);
     S2LPRadioAfcInit(&xSAfcInit);
     

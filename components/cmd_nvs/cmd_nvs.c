@@ -41,6 +41,7 @@ _param _params[]=
 		{"Y",NVS_TYPE_U8, "Sensor JP4 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP4 1 - norm, 0 - alarm"},
 		{"Z",NVS_TYPE_U8, "Sensor JP5 mode, 0-inactive, 1 - change status, 2 - if alarm - non-stop, 0x04 bit: if set JP5 1 - norm, 0 - alarm"},
 		{"G",NVS_TYPE_U8, "CRC mode - 0x00 -NO CRC, 0x20 - 8 bit, 0x40 - 16 bit 0x8005, 0x60 - 16 bit 0x1021"},
+		{"V",NVS_TYPE_I32, "Sensitivity (dbm)"},
 		{"SSID",NVS_TYPE_STR,"SSID"},
 		{"PASSWD",NVS_TYPE_STR,"Password for ssid"},
 		{"",0,""}
