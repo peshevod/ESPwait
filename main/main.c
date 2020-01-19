@@ -209,8 +209,8 @@ static void s2lp_wait(void *arg)
 		}
     	if(xQueueReceive(s2lp_evt_queue,&mes,100/portTICK_PERIOD_MS))
         {
-//        	printf("REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
-        	send_to_cloud();
+        	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.data[0],mes.data[1],mes.data[2]);
+//        	send_to_cloud();
         };
         t--;
         if(t<=0)
