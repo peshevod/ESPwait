@@ -5,7 +5,9 @@
 #include "freertos/event_groups.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include <string.h>
+#include "esp_sleep.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
@@ -22,7 +24,7 @@
 #include "main.h"
 #include "S2LP_Config.h"
 #include "radio.h"
-
+//#include "soc/rtc.h"
 
 //static QueueHandle_t uart2_queue;
 static uint8_t* data0;
@@ -223,6 +225,40 @@ static void s2lp_wait(void *arg)
 
 }
 
+static void s2lp_wait1()
+{
+	input_data_t data;
+    S2LPTimerLdcIrqWa(S_ENABLE);
+	S2LPGpioIrqGetStatus(&xIrqStatus);
+    if(xIrqStatus.RX_DATA_READY)
+    {
+        //Get the RX FIFO size
+        uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+        //Read the RX FIFO
+        S2LPSpiReadFifo(cRxData, (uint8_t*)data.data);
+        //Flush the RX FIFO
+        S2LPCmdStrobeFlushRxFifo();
+        data.input_signal_power=S2LPRadioGetRssidBm();
+        S2LPCmdStrobeSleep();
+    }
+    S2LPTimerLdcIrqWa(S_DISABLE);
+
+    s_wifi_event_group = xEventGroupCreate();
+    tcpip_adapter_init();
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    get_value_from_nvs("SSID",0,sta_config.sta.ssid);
+    get_value_from_nvs("PASSWD",0,sta_config.sta.password);
+    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
+    ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
+    esp_wifi_stop();
+//        	send_to_cloud();
+}
+
 static void s2lp_rec_start(void *arg)
 {
 
@@ -268,10 +304,48 @@ static void s2lp_rec_start(void *arg)
     while(1) vTaskDelay(60000);
 }
 
+static void s2lp_rec_start1()
+{
+
+	S2LPSpiInit();
+	S2LPExitShutdown();
+
+	start_s2lp_console();
+	S2LPGpioIrqGetStatus(&xIrqStatus);
+
+    ESP_LOGI(TAG,"s2lp irq Status get");
+    S2LPCmdStrobeRx();
+};
+
+
+void to_sleep()
+{
+	esp_sleep_enable_timer_wakeup(60000000);
+	esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
+	rtc_gpio_isolate(GPIO_INPUT_IO_0);
+	esp_deep_sleep_start();
+}
+
 void app_main(void)
 {
-	initialize_nvs();
     init_uart0();
+	initialize_nvs();
+/*    switch (esp_sleep_get_wakeup_cause()) {
+        case ESP_SLEEP_WAKEUP_EXT1: {
+        	ESP_LOGI(TAG,"Wakeup!!!");
+        	s2lp_wait1();
+        	break;
+        }
+        case ESP_SLEEP_WAKEUP_TIMER: {
+        	ESP_LOGI(TAG,"I am alive");
+            break;
+        }
+        case ESP_SLEEP_WAKEUP_UNDEFINED:
+        default:
+        	ESP_LOGI(TAG,"Reset!!!");
+        	s2lp_rec_start1();
+    }
+    to_sleep();*/
 //    ESP_ERROR_CHECK(esp_event_loop_create_default());
 //    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
 //	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
