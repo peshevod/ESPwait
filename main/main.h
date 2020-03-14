@@ -32,8 +32,22 @@
 typedef struct
 {
 	int32_t input_signal_power;
-	uint32_t data[PACKETLEN/4];
+	uint32_t seq_number;
+	uint32_t serial_number;
+	uint32_t data[PACKETLEN/4-2];
 } input_data_t;
+
+typedef struct
+{
+	uint32_t serial_number;
+	uint16_t seq;
+} sn_row_t;
+
+typedef struct
+{
+	uint16_t n_of_rows;
+	sn_row_t row[32];
+} sn_table_t;
 
 void init_uart0();
 //void init_uart2();
