@@ -43,6 +43,8 @@ void send_to_cloud(void);
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void IRAM_ATTR s2lp_intr_handler(void* arg);
 static void s2lp_wait(void *arg);
+static void config_isr0(void);
+static void s2lp_wait1(void);
 void test_gpio(void);
 
 

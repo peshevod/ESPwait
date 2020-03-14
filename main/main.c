@@ -24,7 +24,10 @@
 #include "main.h"
 #include "S2LP_Config.h"
 #include "radio.h"
+#include "MCU_interface.h"
 //#include "soc/rtc.h"
+
+#define SLEEP
 
 //static QueueHandle_t uart2_queue;
 static uint8_t* data0;
@@ -243,6 +246,9 @@ static void s2lp_wait1()
     }
     S2LPTimerLdcIrqWa(S_DISABLE);
 
+    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
+    config_isr0();
+
     s_wifi_event_group = xEventGroupCreate();
     tcpip_adapter_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -254,24 +260,31 @@ static void s2lp_wait1()
     get_value_from_nvs("SSID",0,sta_config.sta.ssid);
     get_value_from_nvs("PASSWD",0,sta_config.sta.password);
     ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
+    con=1;
+    ESP_ERROR_CHECK( esp_wifi_start() );
+    ESP_ERROR_CHECK( esp_wifi_connect() );
     ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
-    esp_wifi_stop();
+    uint32_t dt=100;
+    uint32_t x=16000/dt;
+    while (x--)
+    {
+    	if(s2lp_evt_queue==NULL)
+		{
+    		vTaskDelay(dt/portTICK_PERIOD_MS);
+    		continue;
+		}
+    	if(xQueueReceive(s2lp_evt_queue,&mes,dt/portTICK_PERIOD_MS))
+        {
+        	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.data[0],mes.data[1],mes.data[2]);
 //        	send_to_cloud();
+        }
+    }
+
+    esp_wifi_stop();
 }
 
-static void s2lp_rec_start(void *arg)
+static void config_isr0(void)
 {
-
-	S2LPSpiInit();
-	S2LPExitShutdown();
-
-	start_s2lp_console();
-
-//	test_gpio();
-
-    radio_rx_init(PACKETLEN);
-    ESP_LOGI(TAG,"radio_rx_init proceed");
-
     gpio_config_t io_conf;
     //interrupt of rising edge
     io_conf.intr_type = GPIO_INTR_LOW_LEVEL;
@@ -295,6 +308,22 @@ static void s2lp_rec_start(void *arg)
     //hook isr handler for specific gpio pin
     gpio_isr_handler_add(GPIO_INPUT_IO_0, s2lp_intr_handler, (void*) GPIO_INPUT_IO_0);
     ESP_LOGI(TAG,"handler added to isr service");
+}
+
+static void s2lp_rec_start(void *arg)
+{
+
+	S2LPSpiInit();
+	S2LPExitShutdown();
+
+	start_s2lp_console();
+
+//	test_gpio();
+
+    radio_rx_init(PACKETLEN);
+    ESP_LOGI(TAG,"radio_rx_init proceed");
+
+    config_isr0();
 
 	S2LPGpioIrqGetStatus(&xIrqStatus);
 
@@ -311,7 +340,11 @@ static void s2lp_rec_start1()
 	S2LPExitShutdown();
 
 	start_s2lp_console();
-	S2LPGpioIrqGetStatus(&xIrqStatus);
+
+	radio_rx_init(PACKETLEN);
+    ESP_LOGI(TAG,"radio_rx_init proceed");
+
+    S2LPGpioIrqGetStatus(&xIrqStatus);
 
     ESP_LOGI(TAG,"s2lp irq Status get");
     S2LPCmdStrobeRx();
@@ -322,7 +355,9 @@ void to_sleep()
 {
 	esp_sleep_enable_timer_wakeup(60000000);
 	esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
+	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 	rtc_gpio_isolate(GPIO_INPUT_IO_0);
+	rtc_gpio_hold_en(PIN_NUM_SDN);
 	esp_deep_sleep_start();
 }
 
@@ -330,10 +365,13 @@ void app_main(void)
 {
     init_uart0();
 	initialize_nvs();
-/*    switch (esp_sleep_get_wakeup_cause()) {
+#ifdef SLEEP
+	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
         	ESP_LOGI(TAG,"Wakeup!!!");
-        	s2lp_wait1();
+			rtc_gpio_hold_dis(PIN_NUM_SDN);
+			S2LPSpiInit();
+			s2lp_wait1();
         	break;
         }
         case ESP_SLEEP_WAKEUP_TIMER: {
@@ -345,7 +383,8 @@ void app_main(void)
         	ESP_LOGI(TAG,"Reset!!!");
         	s2lp_rec_start1();
     }
-    to_sleep();*/
+    to_sleep();
+#endif
 //    ESP_ERROR_CHECK(esp_event_loop_create_default());
 //    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
 //	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
@@ -354,8 +393,10 @@ void app_main(void)
 //    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
 //	start_x_shell();
+#ifndef SLEEP
     xTaskCreatePinnedToCore(s2lp_rec_start, "s2lp_rec_start", 8192, NULL, 10, NULL,1);
     xTaskCreatePinnedToCore(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL,0);
+#endif
     while(1)
     {
 
