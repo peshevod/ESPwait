@@ -44,6 +44,7 @@ static input_data_t mes;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
+static uint8_t ready_to_send=0;
 
 
 static int s_retry_num = 0;
@@ -119,6 +120,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ifindex=event->if_index;
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        ready_to_send=1;
     }
 }
 
@@ -249,6 +251,7 @@ static void s2lp_wait1()
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
     config_isr0();
 
+    ready_to_send=0;
     s_wifi_event_group = xEventGroupCreate();
     tcpip_adapter_init();
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -263,23 +266,46 @@ static void s2lp_wait1()
     con=1;
     ESP_ERROR_CHECK( esp_wifi_start() );
     ESP_ERROR_CHECK( esp_wifi_connect() );
-    ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
     uint32_t dt=100;
-    uint32_t x=16000/dt;
-    while (x--)
+    uint32_t x0=16000/dt;
+    uint32_t x=x0;
+    while(x--)
     {
-    	if(s2lp_evt_queue==NULL)
-		{
+    	if(ready_to_send) break;
+    	else
+    	{
     		vTaskDelay(dt/portTICK_PERIOD_MS);
-    		continue;
-		}
-    	if(xQueueReceive(s2lp_evt_queue,&mes,dt/portTICK_PERIOD_MS))
-        {
-        	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.data[0],mes.data[1],mes.data[2]);
-//        	send_to_cloud();
-        }
+    	}
     }
-
+    if(!ready_to_send)
+    {
+    	ESP_LOGE(TAG,"Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
+    }
+    else
+    {
+    	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.data[0],data.data[1],data.data[2]);
+		if((data.data[0] & 0xFF000000)!=0x01000000)
+		{
+			x=x0;
+			while (x--)
+			{
+				if(s2lp_evt_queue==NULL)
+				{
+					vTaskDelay(dt/portTICK_PERIOD_MS);
+					continue;
+				}
+				if(xQueueReceive(s2lp_evt_queue,&mes,dt/portTICK_PERIOD_MS))
+				{
+					ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.data[0],mes.data[1],mes.data[2]);
+					if((mes.data[0] & 0xFF000000)==0x01000000) break;
+					x=x0;
+//		        	send_to_cloud();
+				}
+			}
+		}
+    }
+    con=0;
+    esp_wifi_disconnect();
     esp_wifi_stop();
 }
 
