@@ -10,3 +10,8 @@
 idf_component_register(SRCS main.c
                     INCLUDE_DIRS "."
                     REQUIRES s2lp_console S2LP_Library cmd_nvs radio)
+                    
+target_add_binary_data(${COMPONENT_TARGET} "certs/aws-root-ca.pem" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "certs/certificate.pem.crt" TEXT)
+target_add_binary_data(${COMPONENT_TARGET} "certs/private.pem.key" TEXT)
+                    

@@ -9,7 +9,7 @@
 			<name>org.eclipse.cdt.core.cBuilder</name>
 			<triggers>clean,full,incremental,</triggers>
 			<arguments>
-			 </arguments>
+			</arguments>
 		</buildCommand>
 	</buildSpec>
 	<natures>
@@ -17,4 +17,16 @@
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>com.espressif.idf.core.idfNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>components/esp-aws-iot</name>
+			<type>2</type>
+			<location>D:/Espressif/esp-aws-iot</location>
+		</link>
+		<link>
+			<name>main/certs</name>
+			<type>2</type>
+			<location>D:/Eclipse/eclipse-workspace/ESPWait/main/certs</location>
+		</link>
+	</linkedResources>
 </projectDescription>
