@@ -9,7 +9,7 @@
 #register_component()
 idf_component_register(SRCS main.c
                     INCLUDE_DIRS "."
-                    REQUIRES s2lp_console S2LP_Library cmd_nvs radio)
+                    REQUIRES s2lp_console S2LP_Library cmd_nvs radio esp-aws-iot)
                     
 target_add_binary_data(${COMPONENT_TARGET} "certs/aws-root-ca.pem" TEXT)
 target_add_binary_data(${COMPONENT_TARGET} "certs/certificate.pem.crt" TEXT)

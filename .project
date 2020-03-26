@@ -19,11 +19,6 @@
 	</natures>
 	<linkedResources>
 		<link>
-			<name>components/esp-aws-iot</name>
-			<type>2</type>
-			<location>D:/Espressif/esp-aws-iot</location>
-		</link>
-		<link>
 			<name>main/certs</name>
 			<type>2</type>
 			<location>D:/Eclipse/eclipse-workspace/ESPWait/main/certs</location>

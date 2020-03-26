@@ -35,6 +35,7 @@
 //#include "soc/rtc.h"
 
 #define SLEEP
+#define AWS_CLIENT_ID "721730703209"
 
 //static QueueHandle_t uart2_queue;
 static uint8_t* data0;
@@ -45,7 +46,7 @@ static const char *TAGW = "wifi station";
 char buf[MAX_MESSAGE_SIZE];
 char mes1[MAX_MESSAGE_SIZE];
 char mes2[MAX_MESSAGE_SIZE];
-uint8_t con;
+uint8_t con,mqtt_con;
 tcpip_adapter_if_t ifindex;
 static input_data_t mes;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
@@ -62,7 +63,7 @@ extern const uint8_t private_pem_key_end[] asm("_binary_private_pem_key_end");
 /**
  * @brief Default MQTT HOST URL is pulled from the aws_iot_config.h
  */
-char HostAddress[255] = AWS_IOT_MQTT_HOST;
+char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-east-2.amazonaws.com";
 
 /**
  * @brief Default MQTT port is pulled from the aws_iot_config.h
@@ -309,6 +310,9 @@ void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicName, ui
 
 void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
     ESP_LOGW(TAG, "MQTT Disconnect");
+
+    if(!mqtt_con) return;
+
     IoT_Error_t rc = FAILURE;
 
     if(NULL == pClient) {
@@ -329,8 +333,10 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
 }
 
 
-void send_to_cloud1(void)
+void send_to_cloud1(input_data_t data)
 {
+    char cPayload[100];
+    int32_t i = 0;
     IoT_Error_t rc = FAILURE;
 
     AWS_IoT_Client client;
@@ -362,19 +368,16 @@ void send_to_cloud1(void)
         abort();
     }
 
-    /* Wait for WiFI to show as connected */
-    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT,
-                        false, true, portMAX_DELAY);
-
     connectParams.keepAliveIntervalInSec = 10;
     connectParams.isCleanSession = true;
     connectParams.MQTTVersion = MQTT_3_1_1;
     /* Client ID is set in the menuconfig of the example */
-    connectParams.pClientID = CONFIG_AWS_EXAMPLE_CLIENT_ID;
-    connectParams.clientIDLen = (uint16_t) strlen(CONFIG_AWS_EXAMPLE_CLIENT_ID);
+    connectParams.pClientID = "721730703209";
+    connectParams.clientIDLen = (uint16_t) strlen("721730703209");
     connectParams.isWillMsgPresent = false;
 
     ESP_LOGI(TAG, "Connecting to AWS...");
+    mqtt_con=1;
     do {
         rc = aws_iot_mqtt_connect(&client, &connectParams);
         if(SUCCESS != rc) {
@@ -394,7 +397,7 @@ void send_to_cloud1(void)
         abort();
     }
 
-    const char *TOPIC = "test_topic/esp32";
+    const char *TOPIC = "espwait/sensor";
     const int TOPIC_LEN = strlen(TOPIC);
 
     ESP_LOGI(TAG, "Subscribing...");
@@ -414,7 +417,7 @@ void send_to_cloud1(void)
     paramsQOS1.payload = (void *) cPayload;
     paramsQOS1.isRetained = 0;
 
-    while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS == rc)) {
+    do {
 
         //Max time the yield function will wait for read messages
         rc = aws_iot_mqtt_yield(&client, 100);
@@ -423,7 +426,7 @@ void send_to_cloud1(void)
             continue;
         }
 
-        ESP_LOGI(TAG, "Stack remaining for task '%s' is %d bytes", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL));
+/*        ESP_LOGI(TAG, "Stack remaining for task '%s' is %d bytes", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL));
         vTaskDelay(1000 / portTICK_RATE_MS);
         sprintf(cPayload, "%s : %d ", "hello from ESP32 (QOS0)", i++);
         paramsQOS0.payloadLen = strlen(cPayload);
@@ -435,12 +438,25 @@ void send_to_cloud1(void)
         if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
             ESP_LOGW(TAG, "QOS1 publish ack not received.");
             rc = SUCCESS;
+        }*/
+        sprintf(cPayload, "SEND: %d Power: %d dbm 0x%08X 0x%08X 0x%08X\n",i++,data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+        paramsQOS1.payloadLen = strlen(cPayload);
+        rc = aws_iot_mqtt_publish(&client, TOPIC, TOPIC_LEN, &paramsQOS1);
+        if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
+            ESP_LOGW(TAG, "QOS1 publish ack not received.");
+//            rc = SUCCESS;
         }
-    }
+        else ESP_LOGI(TAG,"Published to %s:    %s",TOPIC,cPayload);
+    } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
 
-    ESP_LOGE(TAG, "An error occurred in the main loop.");
-    abort();
+    mqtt_con=0;
+    rc=aws_iot_mqtt_disconnect(&client);
+    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
+//     ESP_LOGE(TAG, "An error occurred in the main loop.");
+//    abort();
 }
+
+
 static void s2lp_wait1()
 {
 	input_data_t data;
@@ -485,10 +501,10 @@ static void s2lp_wait1()
     	}
     	else
     	{
-    		ESP_LOGI(TAG,"SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+//    		ESP_LOGI(TAG,"SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
     		update_table(data.serial_number,data.seq_number,i);
 
-    		send_to_cloud1();
+    		send_to_cloud1(data);
 
     		con=0;
     		esp_wifi_disconnect();
