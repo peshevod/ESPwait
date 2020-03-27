@@ -60,6 +60,6 @@ static void s2lp_wait(void *arg);
 static void config_isr0(void);
 static void s2lp_wait1(void);
 void test_gpio(void);
-
+static void s2lp_rec_start2(void *arg);
 
 #endif /* MAIN_MAIN_H_ */

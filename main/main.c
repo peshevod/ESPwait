@@ -39,6 +39,7 @@
 
 //static QueueHandle_t uart2_queue;
 static uint8_t* data0;
+static int16_t i0;
 //static uint8_t* data2;
 static const char* TAG = "ESPwait";
 static const char* TAG1 = "SendToCloud";
@@ -48,7 +49,7 @@ char mes1[MAX_MESSAGE_SIZE];
 char mes2[MAX_MESSAGE_SIZE];
 uint8_t con,mqtt_con;
 tcpip_adapter_if_t ifindex;
-static input_data_t mes;
+static input_data_t mes,data;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
@@ -172,20 +173,20 @@ void send_to_cloud()
 
 static void IRAM_ATTR s2lp_intr_handler(void* arg)
 {
-	input_data_t data;
-    S2LPTimerLdcIrqWa(S_ENABLE);
+	input_data_t data_in;
+	S2LPTimerLdcIrqWa(S_ENABLE);
 	S2LPGpioIrqGetStatus(&xIrqStatus);
     if(xIrqStatus.RX_DATA_READY)
     {
         //Get the RX FIFO size
         uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
         //Read the RX FIFO
-        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data.seq_number)));
+        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
         //Flush the RX FIFO
         S2LPCmdStrobeFlushRxFifo();
-        data.input_signal_power=S2LPRadioGetRssidBm();
+        data_in.input_signal_power=S2LPRadioGetRssidBm();
         S2LPCmdStrobeSleep();
-        xQueueSendFromISR(s2lp_evt_queue,&data,0);
+        xQueueSendFromISR(s2lp_evt_queue,&data_in,0);
     }
     S2LPTimerLdcIrqWa(S_DISABLE);
 }
@@ -269,7 +270,6 @@ static void wifi_handlers()
 
 static void wifi_prepare()
 {
-    ready_to_send=0;
 	wifi_handlers();
     tcpip_adapter_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -333,7 +333,7 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
 }
 
 
-void send_to_cloud1(input_data_t data)
+void send_to_cloud1()
 {
     char cPayload[100];
     int32_t i = 0;
@@ -457,84 +457,74 @@ void send_to_cloud1(input_data_t data)
 }
 
 
-static void s2lp_wait1()
+static void s2lp_getdata()
 {
-	input_data_t data;
-    S2LPTimerLdcIrqWa(S_ENABLE);
+	input_data_t data_in;
+	S2LPTimerLdcIrqWa(S_ENABLE);
 	S2LPGpioIrqGetStatus(&xIrqStatus);
     if(xIrqStatus.RX_DATA_READY)
     {
         //Get the RX FIFO size
         uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
         //Read the RX FIFO
-        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data.seq_number)));
+        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
         //Flush the RX FIFO
         S2LPCmdStrobeFlushRxFifo();
-        data.input_signal_power=S2LPRadioGetRssidBm();
+        data_in.input_signal_power=S2LPRadioGetRssidBm();
+        xQueueSend(s2lp_evt_queue,&data_in,0);
         S2LPCmdStrobeSleep();
     }
     S2LPTimerLdcIrqWa(S_DISABLE);
-    ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-//    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
-//    config_isr0();
+}
 
+static void s2lp_wait1()
+{
     uint32_t dt=100;
     uint32_t x0=16000/dt;
-    uint32_t x=x0;
-    int16_t i=0;
-
-    if((i=test_update_table(data.serial_number,data.seq_number))!=-1)
-   	{
-    	wifi_prepare();
-
-    	while(x--)
-    	{
-    		if(ready_to_send) break;
-    		else
-    		{
-    			vTaskDelay(dt/portTICK_PERIOD_MS);
-    		}
-    	}
-    	if(!ready_to_send)
-    	{
-    		ESP_LOGE(TAG,"Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
-    	}
-    	else
-    	{
-//    		ESP_LOGI(TAG,"SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-    		update_table(data.serial_number,data.seq_number,i);
-
-    		send_to_cloud1(data);
-
-    		con=0;
-    		esp_wifi_disconnect();
-    	}
-    	esp_wifi_stop();
-    }
-    else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-/*    else
-    {
-    	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-		if((data.seq_number & 0xFF000000)!=0x01000000)
+    uint32_t x;
+    ready_to_send=0;
+    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
+    s2lp_getdata();
+    xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,1);
+	while(xQueueReceive(s2lp_evt_queue,&data,500/portTICK_PERIOD_MS))
+	{
+        ESP_LOGI("s2lp_getdata","REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+		i0=test_update_table(data.serial_number,data.seq_number);
+		if(i0!=-1)
 		{
-			x=x0;
-			while (x--)
+
+			if(!ready_to_send)
 			{
-				if(s2lp_evt_queue==NULL)
+				wifi_prepare();
+
+				x=x0;
+				while(x--)
 				{
-					vTaskDelay(dt/portTICK_PERIOD_MS);
-					continue;
-				}
-				if(xQueueReceive(s2lp_evt_queue,&mes,dt/portTICK_PERIOD_MS))
-				{
-					ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.seq_number,mes.serial_number,mes.data[0]);
-					if((mes.seq_number & 0xFF000000)==0x01000000) break;
-					x=x0;
-//		        	send_to_cloud();
+					if(ready_to_send) break;
+					else
+					{
+						vTaskDelay(dt/portTICK_PERIOD_MS);
+					}
 				}
 			}
+
+			if(!ready_to_send)
+			{
+				ESP_LOGE(TAG,"Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
+				continue;
+			}
+
+			send_to_cloud1();
+			update_table(data.serial_number,data.seq_number,i0);
 		}
-    }*/
+		else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+	}
+	if(ready_to_send)
+	{
+		con=0;
+		esp_wifi_disconnect();
+	}
+	esp_wifi_stop();
 }
 
 static void config_isr0(void)
@@ -587,10 +577,18 @@ static void s2lp_rec_start(void *arg)
     while(1) vTaskDelay(60000);
 }
 
+static void s2lp_rec_start2(void *arg)
+{
+	config_isr0();
+    while(1) vTaskDelay(60000);
+}
+
 static void s2lp_rec_start1()
 {
 
 	S2LPSpiInit();
+	S2LPEnterShutdown();
+	vTaskDelay(5/portTICK_PERIOD_MS);
 	S2LPExitShutdown();
 
 	start_s2lp_console();
@@ -627,23 +625,24 @@ void app_main(void)
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
-        	ESP_LOGI(TAG,"Wakeup!!! num_of_rows=%d",table.n_of_rows);
+        	ESP_LOGI("app_main","Wakeup!!! num_of_rows=%d",table.n_of_rows);
 			rtc_gpio_hold_dis(PIN_NUM_SDN);
 			S2LPSpiInit();
 			s2lp_wait1();
         	break;
         }
         case ESP_SLEEP_WAKEUP_TIMER: {
-        	ESP_LOGI(TAG,"I am alive");
+        	ESP_LOGI("app_main","I am alive");
             break;
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
         	table.n_of_rows=0;
-        	ESP_LOGI(TAG,"Reset!!!");
+        	ESP_LOGI("app_main","Reset!!!");
         	s2lp_rec_start1();
     }
-    to_sleep();
+	ESP_LOGI("app_main","Going to sleep...");
+	to_sleep();
 #endif
 //    ESP_ERROR_CHECK(esp_event_loop_create_default());
 //    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
