@@ -47,7 +47,7 @@ static const char *TAGW = "wifi station";
 char buf[MAX_MESSAGE_SIZE];
 char mes1[MAX_MESSAGE_SIZE];
 char mes2[MAX_MESSAGE_SIZE];
-uint8_t con,mqtt_con;
+uint8_t con,mqtt_con,aws_con;
 tcpip_adapter_if_t ifindex;
 static input_data_t mes,data;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
@@ -332,86 +332,89 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
     }
 }
 
+AWS_IoT_Client client;
+IoT_Client_Init_Params mqttInitParams;
+IoT_Client_Connect_Params connectParams;
+IoT_Publish_Message_Params paramsQOS0;
+IoT_Publish_Message_Params paramsQOS1;
+const char *TOPIC = "espwait/sensor";
 
 void send_to_cloud1()
 {
-    char cPayload[100];
     int32_t i = 0;
     IoT_Error_t rc = FAILURE;
+    char cPayload[100];
+    if(!aws_con)
+    {
 
-    AWS_IoT_Client client;
-    IoT_Client_Init_Params mqttInitParams = iotClientInitParamsDefault;
-    IoT_Client_Connect_Params connectParams = iotClientConnectParamsDefault;
+    	mqttInitParams = iotClientInitParamsDefault;
+    	connectParams = iotClientConnectParamsDefault;
 
-    IoT_Publish_Message_Params paramsQOS0;
-    IoT_Publish_Message_Params paramsQOS1;
 
-    ESP_LOGI(TAG, "AWS IoT SDK Version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_TAG);
+    	ESP_LOGI(TAG, "AWS IoT SDK Version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_TAG);
 
-    mqttInitParams.enableAutoReconnect = false; // We enable this later below
-    mqttInitParams.pHostURL = HostAddress;
-    mqttInitParams.port = port;
+    	mqttInitParams.enableAutoReconnect = false; // We enable this later below
+    	mqttInitParams.pHostURL = HostAddress;
+    	mqttInitParams.port = port;
 
-    mqttInitParams.pRootCALocation = (const char *)aws_root_ca_pem_start;
-    mqttInitParams.pDeviceCertLocation = (const char *)certificate_pem_crt_start;
-    mqttInitParams.pDevicePrivateKeyLocation = (const char *)private_pem_key_start;
+    	mqttInitParams.pRootCALocation = (const char *)aws_root_ca_pem_start;
+    	mqttInitParams.pDeviceCertLocation = (const char *)certificate_pem_crt_start;
+    	mqttInitParams.pDevicePrivateKeyLocation = (const char *)private_pem_key_start;
 
-    mqttInitParams.mqttCommandTimeout_ms = 20000;
-    mqttInitParams.tlsHandshakeTimeout_ms = 5000;
-    mqttInitParams.isSSLHostnameVerify = true;
-    mqttInitParams.disconnectHandler = disconnectCallbackHandler;
-    mqttInitParams.disconnectHandlerData = NULL;
+    	mqttInitParams.mqttCommandTimeout_ms = 20000;
+    	mqttInitParams.tlsHandshakeTimeout_ms = 5000;
+    	mqttInitParams.isSSLHostnameVerify = true;
+    	mqttInitParams.disconnectHandler = disconnectCallbackHandler;
+    	mqttInitParams.disconnectHandlerData = NULL;
 
-    rc = aws_iot_mqtt_init(&client, &mqttInitParams);
-    if(SUCCESS != rc) {
-        ESP_LOGE(TAG, "aws_iot_mqtt_init returned error : %d ", rc);
-        abort();
-    }
+    	rc = aws_iot_mqtt_init(&client, &mqttInitParams);
+    	if(SUCCESS != rc) {
+    		ESP_LOGE(TAG, "aws_iot_mqtt_init returned error : %d ", rc);
+    		abort();
+    	}
 
-    connectParams.keepAliveIntervalInSec = 10;
-    connectParams.isCleanSession = true;
-    connectParams.MQTTVersion = MQTT_3_1_1;
-    /* Client ID is set in the menuconfig of the example */
-    connectParams.pClientID = "721730703209";
-    connectParams.clientIDLen = (uint16_t) strlen("721730703209");
-    connectParams.isWillMsgPresent = false;
+    	connectParams.keepAliveIntervalInSec = 10;
+    	connectParams.isCleanSession = true;
+    	connectParams.MQTTVersion = MQTT_3_1_1;
+    	/* Client ID is set in the menuconfig of the example */
+    	connectParams.pClientID = "721730703209";
+    	connectParams.clientIDLen = (uint16_t) strlen("721730703209");
+    	connectParams.isWillMsgPresent = false;
 
-    ESP_LOGI(TAG, "Connecting to AWS...");
-    mqtt_con=1;
-    do {
-        rc = aws_iot_mqtt_connect(&client, &connectParams);
-        if(SUCCESS != rc) {
-            ESP_LOGE(TAG, "Error(%d) connecting to %s:%d", rc, mqttInitParams.pHostURL, mqttInitParams.port);
-            vTaskDelay(1000 / portTICK_RATE_MS);
-        }
-    } while(SUCCESS != rc);
-
+    	ESP_LOGI(TAG, "Connecting to AWS...");
+    	mqtt_con=1;
+    	do {
+    		rc = aws_iot_mqtt_connect(&client, &connectParams);
+    		if(SUCCESS != rc) {
+    			ESP_LOGE(TAG, "Error(%d) connecting to %s:%d", rc, mqttInitParams.pHostURL, mqttInitParams.port);
+    			vTaskDelay(1000 / portTICK_RATE_MS);
+    		}
+    	} while(SUCCESS != rc);
+    	aws_con=1;
     /*
      * Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
      *  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
      *  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
      */
-    rc = aws_iot_mqtt_autoreconnect_set_status(&client, true);
-    if(SUCCESS != rc) {
-        ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d", rc);
-        abort();
+    	rc = aws_iot_mqtt_autoreconnect_set_status(&client, true);
+    	if(SUCCESS != rc) {
+    		ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d", rc);
+    		abort();
+    	}
+
     }
+    	/*ESP_LOGI(TAG, "Subscribing...");
+    	rc = aws_iot_mqtt_subscribe(&client, TOPIC, TOPIC_LEN, QOS0, iot_subscribe_callback_handler, NULL);
+    	if(SUCCESS != rc) {
+    		ESP_LOGE(TAG, "Error subscribing : %d ", rc);
+    		abort();
+    	}*/
 
-    const char *TOPIC = "espwait/sensor";
-    const int TOPIC_LEN = strlen(TOPIC);
+//    	sprintf(cPayload, "%s : %d ", "hello from SDK", i);
 
-    ESP_LOGI(TAG, "Subscribing...");
-    rc = aws_iot_mqtt_subscribe(&client, TOPIC, TOPIC_LEN, QOS0, iot_subscribe_callback_handler, NULL);
-    if(SUCCESS != rc) {
-        ESP_LOGE(TAG, "Error subscribing : %d ", rc);
-        abort();
-    }
-
-    sprintf(cPayload, "%s : %d ", "hello from SDK", i);
-
-    paramsQOS0.qos = QOS0;
-    paramsQOS0.payload = (void *) cPayload;
-    paramsQOS0.isRetained = 0;
+    	/*paramsQOS0.qos = QOS0;
+    	paramsQOS0.payload = (void *) cPayload;
+    	paramsQOS0.isRetained = 0;*/
 
     paramsQOS1.qos = QOS1;
     paramsQOS1.payload = (void *) cPayload;
@@ -419,12 +422,12 @@ void send_to_cloud1()
 
     do {
 
-        //Max time the yield function will wait for read messages
-        rc = aws_iot_mqtt_yield(&client, 100);
-        if(NETWORK_ATTEMPTING_RECONNECT == rc) {
-            // If the client is attempting to reconnect we will skip the rest of the loop.
-            continue;
-        }
+    	//Max time the yield function will wait for read messages
+    	rc = aws_iot_mqtt_yield(&client, 100);
+    	if(NETWORK_ATTEMPTING_RECONNECT == rc) {
+    		// If the client is attempting to reconnect we will skip the rest of the loop.
+    		continue;
+    	}
 
 /*        ESP_LOGI(TAG, "Stack remaining for task '%s' is %d bytes", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL));
         vTaskDelay(1000 / portTICK_RATE_MS);
@@ -439,19 +442,16 @@ void send_to_cloud1()
             ESP_LOGW(TAG, "QOS1 publish ack not received.");
             rc = SUCCESS;
         }*/
-        sprintf(cPayload, "SEND: %d Power: %d dbm 0x%08X 0x%08X 0x%08X\n",i++,data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-        paramsQOS1.payloadLen = strlen(cPayload);
-        rc = aws_iot_mqtt_publish(&client, TOPIC, TOPIC_LEN, &paramsQOS1);
-        if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
-            ESP_LOGW(TAG, "QOS1 publish ack not received.");
-//            rc = SUCCESS;
-        }
-        else ESP_LOGI(TAG,"Published to %s:    %s",TOPIC,cPayload);
+    	sprintf(cPayload, "SEND: %d Power: %d dbm 0x%08X 0x%08X 0x%08X\n",i++,data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+    	paramsQOS1.payloadLen = strlen(cPayload);
+    	rc = aws_iot_mqtt_publish(&client, TOPIC, strlen(TOPIC), &paramsQOS1);
+    	if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
+    		ESP_LOGW(TAG, "QOS1 publish ack not received.");
+//            	rc = SUCCESS;
+    	}
+    	else ESP_LOGI(TAG,"Published to %s:    %s",TOPIC,cPayload);
     } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
 
-    mqtt_con=0;
-    rc=aws_iot_mqtt_disconnect(&client);
-    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
 //     ESP_LOGE(TAG, "An error occurred in the main loop.");
 //    abort();
 }
@@ -483,6 +483,7 @@ static void s2lp_wait1()
     uint32_t x0=16000/dt;
     uint32_t x;
     ready_to_send=0;
+    aws_con=0;
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
     s2lp_getdata();
     xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,1);
@@ -514,17 +515,24 @@ static void s2lp_wait1()
 				continue;
 			}
 
-			send_to_cloud1();
+			send_to_cloud1(data);
 			update_table(data.serial_number,data.seq_number,i0);
 		}
 		else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+	}
+	if(mqtt_con)
+	{
+	    mqtt_con=0;
+	    IoT_Error_t rc=aws_iot_mqtt_disconnect(&client);
+	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
+	    aws_con=0;
 	}
 	if(ready_to_send)
 	{
 		con=0;
 		esp_wifi_disconnect();
+		esp_wifi_stop();
 	}
-	esp_wifi_stop();
 }
 
 static void config_isr0(void)
