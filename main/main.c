@@ -54,6 +54,7 @@ static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
 static uint8_t ready_to_send=0;
+uint32_t uid;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
@@ -74,6 +75,7 @@ uint32_t port = AWS_IOT_MQTT_PORT;
 
 
 RTC_SLOW_ATTR sn_table_t table;
+RTC_SLOW_ATTR uint32_t seq;
 
 static int s_retry_num = 0;
 /* FreeRTOS event group to signal when we are connected*/
@@ -341,7 +343,6 @@ const char *TOPIC = "espwait/sensor";
 
 void send_to_cloud1()
 {
-    int32_t i = 0;
     IoT_Error_t rc = FAILURE;
     char cPayload[100];
     if(!aws_con)
@@ -442,14 +443,15 @@ void send_to_cloud1()
             ESP_LOGW(TAG, "QOS1 publish ack not received.");
             rc = SUCCESS;
         }*/
-    	sprintf(cPayload, "SEND: %d Power: %d dbm 0x%08X 0x%08X 0x%08X\n",i++,data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+//    	ESP_LOGI("send_t0_cloud","UID=%08X",uid);
+    	sprintf(cPayload, "GWSEQ: %d\nGWUID:0x%08X\nPOWER: %d\nMODSEQ: 0x%08X\nMODSN: 0x%08X\nSENSOR: 0x%08X\n",seq++,uid,data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
     	paramsQOS1.payloadLen = strlen(cPayload);
     	rc = aws_iot_mqtt_publish(&client, TOPIC, strlen(TOPIC), &paramsQOS1);
     	if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
     		ESP_LOGW(TAG, "QOS1 publish ack not received.");
 //            	rc = SUCCESS;
     	}
-    	else ESP_LOGI(TAG,"Published to %s:    %s",TOPIC,cPayload);
+    	else ESP_LOGI(TAG,"Published to %s:\n%s",TOPIC,cPayload);
     } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
 
 //     ESP_LOGE(TAG, "An error occurred in the main loop.");
@@ -594,12 +596,15 @@ static void s2lp_rec_start2(void *arg)
 static void s2lp_rec_start1()
 {
 
+	table.n_of_rows=0;
+	seq=0;
 	S2LPSpiInit();
 	S2LPEnterShutdown();
 	vTaskDelay(5/portTICK_PERIOD_MS);
 	S2LPExitShutdown();
 
 	start_s2lp_console();
+	ESP_LOGI("start1","UID=%08X",uid);
 
 	radio_rx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_rx_init proceed");
@@ -630,6 +635,7 @@ void app_main(void)
 //    CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
 	init_uart0();
 	initialize_nvs();
+	get_uid(&uid);
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
@@ -645,7 +651,6 @@ void app_main(void)
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
-        	table.n_of_rows=0;
         	ESP_LOGI("app_main","Reset!!!");
         	s2lp_rec_start1();
     }

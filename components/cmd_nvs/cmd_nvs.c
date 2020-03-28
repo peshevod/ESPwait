@@ -59,6 +59,7 @@ void get_uid(uint32_t* uid)
 	uint8_t mac[6];
 	ESP_ERROR_CHECK(esp_efuse_mac_get_default(mac));
 	memcpy(uid,&(mac[2]),4);
+//	ESP_LOGI("get_uid","MAC: %02x %02x %02x %02x %02x %02x %08x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5],uid[0]);
 }
 
 static int key_to_type(char* key)

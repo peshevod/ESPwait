@@ -49,6 +49,14 @@ typedef struct
 	sn_row_t row[32];
 } sn_table_t;
 
+typedef struct
+{
+	uint32_t seq;
+	uint32_t uid;
+	input_data_t data;
+} output_data_t;
+
+
 void init_uart0();
 //void init_uart2();
 //static void uart_rec_task(void *arg);
