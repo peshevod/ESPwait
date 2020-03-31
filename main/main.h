@@ -70,4 +70,7 @@ static void s2lp_wait1(void);
 void test_gpio(void);
 static void s2lp_rec_start2(void *arg);
 
+void init_bt_gattc(void);
+void init_bt_gatts(void);
+
 #endif /* MAIN_MAIN_H_ */

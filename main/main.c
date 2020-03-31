@@ -823,7 +823,8 @@ void app_main(void)
 //    CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
 	init_uart0();
 	initialize_nvs();
-	get_uid(&uid);
+	init_bt_gatts();
+while(1)	get_uid(&uid);
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
