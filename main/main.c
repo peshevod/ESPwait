@@ -32,6 +32,7 @@
 #include "aws_iot_version.h"
 #include "aws_iot_mqtt_client_interface.h"
 #include "aws_iot_shadow_interface.h"
+#include "spp_server.h"
 //#include "bt/host/bluedroid/api/include/api/esp_bt_main.h"
 //#include "soc/rtc.h"
 
@@ -823,7 +824,7 @@ void app_main(void)
 //    CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
 	init_uart0();
 	initialize_nvs();
-	init_bt_gatts();
+	init_spp_server();
 while(1)	get_uid(&uid);
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
