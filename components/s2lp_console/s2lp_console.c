@@ -24,19 +24,30 @@
 
 static const char* TAG = "s2lp_console";
 extern uint8_t s2lp_console_ex;
+extern int volatile console_fd;
 
 static void initialize_console()
 {
     /* Disable buffering on stdin */
     setvbuf(stdin, NULL, _IONBF, 0);
+    int k=60;
+    while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
-    esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
-    /* Move the caret to the beginning of the next line on '\n' */
-    esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
+    if(console_fd==-1)
+    {
+    	/* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
+    	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+    	/* Move the caret to the beginning of the next line on '\n' */
+    	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
 
-    /* Tell VFS to use UART driver */
-    esp_vfs_dev_uart_use_driver(UART_NUM_0);
+    	/* Tell VFS to use UART driver */
+    	esp_vfs_dev_uart_use_driver(UART_NUM_0);
+    }
+    else
+    {
+    	stdin=fdopen(console_fd,"r");
+    	stdout=fdopen(console_fd,"w");
+    }
 
     /* Initialize the console */
     esp_console_config_t console_config = {

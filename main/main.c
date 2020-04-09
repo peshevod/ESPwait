@@ -792,6 +792,7 @@ static void s2lp_rec_start1()
 	vTaskDelay(5/portTICK_PERIOD_MS);
 	S2LPExitShutdown();
 
+	init_spp_server();
 	start_s2lp_console();
 	ESP_LOGI("start1","UID=%08X",uid);
 
@@ -824,8 +825,6 @@ void app_main(void)
 //    CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
 	init_uart0();
 	initialize_nvs();
-	init_spp_server();
-while(1)	get_uid(&uid);
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
