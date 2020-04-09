@@ -66,7 +66,7 @@ static void spp_read_handle(void * param)
             break;
         }
 //        esp_log_buffer_hex(SPP_TAG, spp_data, size);
-        sizew = write(fd,spp_data,size);
+//        sizew = write(fd,spp_data,size);
         if (size == 0) {
             /*read fail due to there is no data, retry after 1s*/
             vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -111,7 +111,7 @@ static void esp_spp_cb(uint16_t e, void *p)
     case ESP_SPP_SRV_OPEN_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT");
         ESP_LOGI(SPP_TAG,"opened fd=%d", param->srv_open.fd);
-        spp_wr_task_start_up(spp_read_handle, param->srv_open.fd);
+//        spp_wr_task_start_up(spp_read_handle, param->srv_open.fd);
 //        old_stdin=stdin;
 //        old_stdout=stdout;
 //        stdin=fdopen(param->srv_open.fd,"r");

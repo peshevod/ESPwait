@@ -30,7 +30,7 @@ static void initialize_console()
 {
     /* Disable buffering on stdin */
     setvbuf(stdin, NULL, _IONBF, 0);
-    int k=60;
+    int k=120;
     while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     if(console_fd==-1)
@@ -71,6 +71,7 @@ static void initialize_console()
 
     /* Set command history size */
     linenoiseHistorySetMaxLen(100);
+
 
 }
 
@@ -145,6 +146,7 @@ void start_s2lp_console()
         linenoiseHistorySave(HISTORY_PATH);
 #endif
 
+        while(1);
         /* Try to run the command */
         int ret;
         esp_err_t err = esp_console_run(line, &ret);
