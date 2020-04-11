@@ -7,8 +7,10 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/fcntl.h>
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_console.h"
@@ -25,6 +27,7 @@
 static const char* TAG = "s2lp_console";
 extern uint8_t s2lp_console_ex;
 extern int volatile console_fd;
+char x[128];
 
 static void initialize_console()
 {
@@ -45,8 +48,21 @@ static void initialize_console()
     }
     else
     {
-    	stdin=fdopen(console_fd,"r");
-    	stdout=fdopen(console_fd,"w");
+    	__getreent()->_stdout=fdopen(console_fd,"w");
+//    	__getreent()->_stdin=fdopen(console_fd,"r");
+    	_GLOBAL_REENT->_stdout=fdopen(console_fd,"w");
+//    	_GLOBAL_REENT->_stdin=fdopen(console_fd,"r");
+    	printf("OK\n");
+    	printf("%d OK\n",1);
+//    	fxwrite(x,1,strlen(x),stdout);
+/*    	while(1)
+    	{
+    		int ch;
+    		while((ch=fxgetc(stdin)) !=EOF) fxwrite(&ch,1,1,stdout);
+    		sprintf(x,"%02X ",(char)ch);
+    		fxwrite(x,1,strlen(x),stdout);
+    		vTaskDelay(10 / portTICK_PERIOD_MS);
+    	}*/
     }
 
     /* Initialize the console */
@@ -146,7 +162,7 @@ void start_s2lp_console()
         linenoiseHistorySave(HISTORY_PATH);
 #endif
 
-        while(1);
+//        while(1);
         /* Try to run the command */
         int ret;
         esp_err_t err = esp_console_run(line, &ret);
