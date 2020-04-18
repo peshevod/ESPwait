@@ -23,6 +23,7 @@
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
 #include "s2lp_console.h"
+#include "shell.h"
 
 static const char* TAG = "s2lp_console";
 extern uint8_t s2lp_console_ex;
@@ -32,38 +33,14 @@ char x[128];
 static void initialize_console()
 {
     /* Disable buffering on stdin */
-    setvbuf(stdin, NULL, _IONBF, 0);
-    int k=120;
-    while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
+	setvbuf(stdin, NULL, _IONBF, 0);
+    /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
+	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+    /* Move the caret to the beginning of the next line on '\n' */
+	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
 
-    if(console_fd==-1)
-    {
-    	/* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
-    	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
-    	/* Move the caret to the beginning of the next line on '\n' */
-    	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
-
-    	/* Tell VFS to use UART driver */
-    	esp_vfs_dev_uart_use_driver(UART_NUM_0);
-    }
-    else
-    {
-    	__getreent()->_stdout=fdopen(console_fd,"w");
-//    	__getreent()->_stdin=fdopen(console_fd,"r");
-    	_GLOBAL_REENT->_stdout=fdopen(console_fd,"w");
-//    	_GLOBAL_REENT->_stdin=fdopen(console_fd,"r");
-    	printf("OK\n");
-    	printf("%d OK\n",1);
-//    	fxwrite(x,1,strlen(x),stdout);
-/*    	while(1)
-    	{
-    		int ch;
-    		while((ch=fxgetc(stdin)) !=EOF) fxwrite(&ch,1,1,stdout);
-    		sprintf(x,"%02X ",(char)ch);
-    		fxwrite(x,1,strlen(x),stdout);
-    		vTaskDelay(10 / portTICK_PERIOD_MS);
-    	}*/
-    }
+    /* Tell VFS to use UART driver */
+	esp_vfs_dev_uart_use_driver(UART_NUM_0);
 
     /* Initialize the console */
     esp_console_config_t console_config = {
@@ -93,19 +70,33 @@ static void initialize_console()
 
 int volatile s2lp_console_timer_expired;
 
-void vTimerCallback( TimerHandle_t pxTimer )
+static void vTimerCallback( TimerHandle_t pxTimer )
 {
 	s2lp_console_timer_expired=1;
 }
+
+
 void start_s2lp_console()
 {
+    int k=120;
+    while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+//    ESP_LOGI("start_s2lp_console","console_fd=%d",console_fd);
+    if(console_fd!=-1)
+    {
+    	EUSART1_init(console_fd);
+    	start_x_shell();
+    	return;
+    }
+
 	printf("\n Press any key to start console...\n");
     size_t len;
-    uart_flush_input(UART_NUM_0);
+    if(console_fd==-1) uart_flush_input(UART_NUM_0);
 	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
     xTimerStart(Timer3,0);
     s2lp_console_timer_expired=0;
-    while(!s2lp_console_timer_expired)
+    if(console_fd==-1)
+    {while(!s2lp_console_timer_expired)
     {
     	uart_get_buffered_data_len(UART_NUM_0,&len);
     	if (len!=0)
@@ -113,6 +104,7 @@ void start_s2lp_console()
     		uart_flush_input(UART_NUM_0);
     		break;
     	}
+    }
     }
 
     if(xTimerIsTimerActive(Timer3)) xTimerStop(Timer3,0);

@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#include "nvs.h"
+
 typedef struct param
 {
     char c[16];
@@ -22,7 +24,12 @@ typedef struct param
 // Register NVS functions
 void register_nvs();
 void get_uid(uint32_t* uid);
-esp_err_t get_value_from_nvs(char *key, int x, void* y);
+esp_err_t get_value_from_nvs(char *key, int x, char* y,void* value);
+esp_err_t set_value_in_nvs(char *key, const char *str_value);
+int list_init(void);
+int list(int x, char* y, char* value);
+esp_err_t add_uid(void);
+
 
 #ifdef __cplusplus
 }

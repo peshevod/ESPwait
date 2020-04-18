@@ -233,8 +233,8 @@ static void s2lp_wait(void *arg)
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    get_value_from_nvs("SSID",0,sta_config.sta.ssid);
-    get_value_from_nvs("PASSWD",0,sta_config.sta.password);
+    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
+    get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
     ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
     while (1)
     {
@@ -275,8 +275,8 @@ static void wifi_prepare()
     tcpip_adapter_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
-    get_value_from_nvs("SSID",0,sta_config.sta.ssid);
-    get_value_from_nvs("PASSWD",0,sta_config.sta.password);
+    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
+    get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
     con=1;
