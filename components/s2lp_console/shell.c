@@ -20,7 +20,7 @@
 
 #include "esp_vfs.h"
 #include "sys/unistd.h"
-
+#include "mbedtls/md5.h"
 
 char t[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
@@ -52,12 +52,22 @@ void EUSART1_init(int fd)
 
 void taskRead(void* param)
 {
+	UBaseType_t uxFree;
+	UBaseType_t uxRead;
+	UBaseType_t uxWrite;
+	UBaseType_t uxAcquire;
+	UBaseType_t uxItemsWaiting;
 	int size;
 	char buf0[BUF_LEN];
 	while(!gError)
 	{
-		size=read(((exchange_par_t*)param)->fd,buf0,BUF_LEN);
-		if(size==-1)
+		xSemaphoreTake(((exchange_par_t*)param)->xSemaphore,portMAX_DELAY);
+		vRingbufferGetInfo(read_par.rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
+		xSemaphoreGive(((exchange_par_t*)param)->xSemaphore);
+		int l=BUF_LEN<RING_BUF_LEN-uxItemsWaiting ? BUF_LEN : RING_BUF_LEN-uxItemsWaiting;
+		if(l>0) size=read(((exchange_par_t*)param)->fd,buf0,l);
+		else size=0;
+		if(size<0)
 		{
 			gError=1;
 			break;
@@ -193,11 +203,75 @@ void empty_RXbuffer() {
     while (EUSART1_is_rx_ready()) EUSART1_Read();
 }
 
+static int volatile timer4_expired=0;
+char* data;
+
+static void Timer4Callback( TimerHandle_t pxTimer )
+{
+	timer4_expired=1;
+}
+
+
+static int getcert(char* cert)
+{
+	int len=0;
+	char c;
+	unsigned char md5[16];
+	char str_md5[40];
+	char str[64];
+	char key_name[16];
+	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
+	{
+		char* data=(char*)malloc(4096);
+		send_chars("Sent certificate or key, at the end please press Ctrl-Z...\n");
+		TimerHandle_t Timer4=xTimerCreate("Timer4",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback);
+		timer4_expired=0;
+		xTimerStart(Timer4,0);
+		gError=0;
+		do
+		{
+			while(!timer4_expired && !EUSART1_is_rx_ready()) vTaskDelay(1/portTICK_RATE_MS);
+			c=EUSART1_Read();
+			if(c=='\xff') continue;
+			if(c==0x1a) break;
+			EUSART1_Write(c);
+			data[len++]=c;
+		} while(!timer4_expired);
+		if(timer4_expired)
+		{
+			free(data);
+			return 2;
+		}
+		if(mbedtls_md5_ret((const unsigned char*)data,len,md5))
+		{
+			send_chars("Error while calculating MD5\n");
+			free(data);
+			return 2;
+		}
+		sprintf(str_md5,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",md5[0],md5[1],md5[2],md5[3],md5[4],md5[5],md5[6],md5[7],md5[8],md5[9],md5[10],md5[11],md5[12],md5[13],md5[14],md5[15]);
+		sprintf(str,"\nCheck MD5 sum: %s\n",str_md5);
+		send_chars(str);
+		strcpy(key_name,"MD5");
+		strcat(key_name,cert);
+		if(set_cert(cert,data,len)==ESP_OK)
+		{
+			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len);
+			if(set_value_in_nvs(key_name,str_md5)==ESP_OK)
+			{
+				free(data);
+				return 1;
+			}
+		}
+		free(data);
+	}
+	return 2;
+}
+
 
 
 void print_par(char* p)
 {
-	char value[32];
+	char value[64];
 	char y[256];
 	_param* __params=_params;
     while(__params->type)
@@ -215,7 +289,7 @@ void print_par(char* p)
 
 void EUSART1_list()
 {
-	char value[32];
+	char value[64];
 	char y[256];
 	int rc;
 	list_init();
@@ -270,6 +344,11 @@ uint8_t proceed() {
         print_par(par);
         return 1;
     }
+    if(cmd=='G')
+    {
+    	return getcert(par);
+    }
+    if(cmd!='S') return 2;
 //    i++;
     while (c_buf[i] == ' ' || c_buf[i] == '\t') i++;
     if (c_buf[i++] != '=') return 2;

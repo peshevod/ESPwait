@@ -44,6 +44,12 @@ _param _params[]=
 		{"V",NVS_TYPE_I32, "Sensitivity (dbm)"},
 		{"SSID",NVS_TYPE_STR,"SSID"},
 		{"PASSWD",NVS_TYPE_STR,"Password for ssid"},
+		{"MD5ROOT",NVS_TYPE_STR,"MD5 sum for root certificate"},
+		{"MD5CERT",NVS_TYPE_STR,"MD5 sum for certificate"},
+		{"MD5KEY",NVS_TYPE_STR,"MD5 sum for key"},
+		{"ROOT",NVS_TYPE_BLOB,"root certificate"},
+		{"CERT",NVS_TYPE_BLOB,"certificate"},
+		{"KEY",NVS_TYPE_BLOB,"private key"},
 		{"",0,""}
 };
 
@@ -101,6 +107,27 @@ esp_err_t add_uid()
 
 }
 
+esp_err_t set_cert(char* key, char* value, int len)
+{
+    esp_err_t err;
+    nvs_handle_t nvs;
+    err = nvs_open_from_partition(s2lp_partition, s2lp_namespace, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err=nvs_set_blob(nvs, key, value, len);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_commit(nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return ESP_OK;
+}
 
 esp_err_t set_value_in_nvs(char *key, const char *str_value)
 {
@@ -141,6 +168,11 @@ esp_err_t set_value_in_nvs(char *key, const char *str_value)
     }  else if (type == NVS_TYPE_STR) {
 	   err = nvs_set_str(nvs, key0, str_value);
     }
+    else
+    {
+    	nvs_close(nvs);
+    	return err;
+    }
 
 
     if (range_error || errno == ERANGE) {
@@ -162,7 +194,8 @@ esp_err_t set_value_in_nvs(char *key, const char *str_value)
 esp_err_t get_value_from_nvs(char *key, int x, char* y, void* value)
 {
     nvs_handle_t nvs;
-    esp_err_t err;
+    esp_err_t err=ESP_OK;
+    size_t len;
 
     int itab=key_to_type(key);
     if (itab==-1) {
@@ -176,6 +209,7 @@ esp_err_t get_value_from_nvs(char *key, int x, char* y, void* value)
     if (err != ESP_OK) {
         return err;
     }
+
 
     if (type == NVS_TYPE_U8) {
         if ((err = nvs_get_u8(nvs, key0, (uint8_t*)value)) == ESP_OK) {
@@ -204,12 +238,16 @@ esp_err_t get_value_from_nvs(char *key, int x, char* y, void* value)
            	}
         }
     } else if (type == NVS_TYPE_STR) {
-    	size_t len;
     	if ((err = nvs_get_str(nvs, key0, (char*)value,&len)) == ESP_OK) {
+    		((char*)value)[len]=0;
     		if(y!=NULL)	sprintf(y,"%s=%s    %s\n", key0, (char*)value,_params[itab].desc);
 		}
     }
-
+    else
+    {
+    	y[0]=0;
+    	((char*)value)[0]=0;
+    }
     nvs_close(nvs);
     return err;
 }
@@ -276,8 +314,14 @@ int list(int x, char* y, char* value)
     } else if (type == NVS_TYPE_STR) {
       	size_t len;
        	if ((err = nvs_get_str(nvs0, key0, (char*)value,&len)) == ESP_OK) {
+       		value[len]=0;
        		if(y!=NULL)	sprintf(y,"%s=%s    %s\n", key0, (char*)value,_params[itab].desc);
    		}
+    }
+    else
+    {
+    	y[0]=0;
+    	value[0]=0;
     }
 
     if(it!=NULL) return 1;
@@ -305,7 +349,7 @@ static int get_value(int argc, char **argv)
 {
 //    ESP_LOGI(TAG,"get %s,%s",argv[0],argv[1]);
 	esp_err_t err;
-	char value[32];
+	char value[64];
 	char s[256];
 	if(argc==3 && argv[1][0]=='-' && argv[1][1]=='x') err = get_value_from_nvs(argv[2], 1,s,value);
 	else err = get_value_from_nvs(argv[1], 0,s,value);
@@ -324,7 +368,7 @@ static int list_entries(int argc, char **argv)
 //    ESP_LOGI(TAG,"list %d %s",argc,argv[0]);
 	int rc;
 	int x=0;
-	char y[256],value[32];
+	char y[256],value[64];
 	if(argc==2 && argv[1][0]=='-' && argv[1][1]=='x') x=1;
     else x=0;
 	list_init();

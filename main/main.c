@@ -792,7 +792,6 @@ static void s2lp_rec_start1()
 	vTaskDelay(5/portTICK_PERIOD_MS);
 	S2LPExitShutdown();
 
-	init_spp_server();
 	start_s2lp_console();
 	ESP_LOGI("start1","UID=%08X",uid);
 

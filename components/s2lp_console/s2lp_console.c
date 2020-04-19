@@ -24,11 +24,13 @@
 #include "cmd_nvs.h"
 #include "s2lp_console.h"
 #include "shell.h"
+#include "spp_server.h"
 
 static const char* TAG = "s2lp_console";
 extern uint8_t s2lp_console_ex;
 extern int volatile console_fd;
 char x[128];
+extern char server_name[40];
 
 static void initialize_console()
 {
@@ -78,6 +80,10 @@ static void vTimerCallback( TimerHandle_t pxTimer )
 
 void start_s2lp_console()
 {
+    uint32_t uid;
+    get_uid(&uid);
+    sprintf(server_name,"ESPWAIT-%08X",uid);
+    init_spp_server();
     int k=120;
     while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -86,8 +92,10 @@ void start_s2lp_console()
     {
     	EUSART1_init(console_fd);
     	start_x_shell();
+    	shutdown_spp_server();
     	return;
     }
+    shutdown_spp_server();
 
 	printf("\n Press any key to start console...\n");
     size_t len;

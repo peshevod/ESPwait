@@ -29,6 +29,7 @@ esp_err_t set_value_in_nvs(char *key, const char *str_value);
 int list_init(void);
 int list(int x, char* y, char* value);
 esp_err_t add_uid(void);
+esp_err_t set_cert(char* key, char* value, int len);
 
 
 #ifdef __cplusplus

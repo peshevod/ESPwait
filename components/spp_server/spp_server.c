@@ -43,7 +43,7 @@
 
 #define SPP_TAG "SPP_ACCEPTOR_DEMO"
 #define SPP_SERVER_NAME "SPP_SERVER"
-#define EXCAMPLE_DEVICE_NAME "ESP_SPP_ACCEPTOR"
+
 
 static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_VFS;
 
@@ -53,6 +53,7 @@ static const esp_spp_role_t role_slave = ESP_SPP_ROLE_SLAVE;
 #define SPP_DATA_LEN 100
 static uint8_t spp_data[SPP_DATA_LEN];
 int volatile console_fd=-1;
+char server_name[40];
 
 static void spp_read_handle(void * param)
 {
@@ -86,7 +87,7 @@ static void esp_spp_cb(uint16_t e, void *p)
     switch (event) {
     case ESP_SPP_INIT_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_INIT_EVT");
-        esp_bt_dev_set_device_name(EXCAMPLE_DEVICE_NAME);
+        esp_bt_dev_set_device_name(server_name);
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
         esp_spp_start_srv(sec_mask,role_slave, 0, SPP_SERVER_NAME);
         break;
@@ -239,3 +240,11 @@ void init_spp_server()
     esp_bt_gap_set_pin(pin_type, 0, pin_code);
 }
 
+void shutdown_spp_server(void)
+{
+	esp_spp_deinit();
+	spp_task_task_shut_down();
+	esp_bluedroid_disable();
+	esp_bluedroid_deinit();
+	esp_bt_controller_disable();
+}

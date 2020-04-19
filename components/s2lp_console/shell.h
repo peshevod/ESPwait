@@ -18,7 +18,7 @@ extern "C" {
 #include "freertos/ringbuf.h"
 
 
-#define BUF_LEN 256
+#define BUF_LEN 1024
 #define RING_BUF_LEN 1024
 
 
