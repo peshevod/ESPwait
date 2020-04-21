@@ -30,7 +30,7 @@ int list_init(void);
 int list(int x, char* y, char* value);
 esp_err_t add_uid(void);
 esp_err_t set_cert(char* key, char* value, int len);
-
+esp_err_t get_certs(void);
 
 #ifdef __cplusplus
 }

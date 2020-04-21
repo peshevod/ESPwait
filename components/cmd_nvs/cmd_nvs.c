@@ -118,15 +118,70 @@ esp_err_t set_cert(char* key, char* value, int len)
 
     err=nvs_set_blob(nvs, key, value, len);
     if (err != ESP_OK) {
+    	nvs_close(nvs);
         return err;
     }
 
     err = nvs_commit(nvs);
     if (err != ESP_OK) {
+    	nvs_close(nvs);
         return err;
     }
 
+    nvs_close(nvs);
     return ESP_OK;
+}
+
+char* pKey;
+char* pRoot;
+char* pCert;
+
+esp_err_t get_certs()
+{
+    esp_err_t err;
+    nvs_handle_t nvs;
+    size_t len;
+    err = nvs_open_from_partition(s2lp_partition, s2lp_namespace, NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err=nvs_get_blob(nvs, "KEY", NULL, &len);
+    if (err == ESP_OK) {
+    	pKey=(char*)malloc(len+1);
+       	err=nvs_get_blob(nvs, "KEY", pKey, &len);
+       	if (err != ESP_OK) {
+       		free(pKey);
+       		pKey=NULL;
+       	}
+       	pKey[len]=0;
+    } else pKey=NULL;
+
+    err=nvs_get_blob(nvs, "ROOT", NULL, &len);
+    if (err == ESP_OK) {
+    	pRoot=(char*)malloc(len+1);
+       	err=nvs_get_blob(nvs, "ROOT", pRoot, &len);
+       	if (err != ESP_OK) {
+       		free(pRoot);
+       		pRoot=NULL;
+       	}
+       	pRoot[len]=0;
+    } else pRoot=NULL;
+
+    err=nvs_get_blob(nvs, "CERT", NULL, &len);
+    if (err == ESP_OK) {
+    	pCert=(char*)malloc(len+1);
+       	err=nvs_get_blob(nvs, "CERT", pCert, &len);
+       	if (err != ESP_OK) {
+       		free(pCert);
+       		pCert=NULL;
+       	}
+       	pCert[len]=0;
+    } else pCert=NULL;
+
+    nvs_close(nvs);
+    return ESP_OK;
+
 }
 
 esp_err_t set_value_in_nvs(char *key, const char *str_value)
@@ -239,13 +294,13 @@ esp_err_t get_value_from_nvs(char *key, int x, char* y, void* value)
         }
     } else if (type == NVS_TYPE_STR) {
     	if ((err = nvs_get_str(nvs, key0, (char*)value,&len)) == ESP_OK) {
-    		((char*)value)[len]=0;
+ESP_LOGI(__func__,"Key=%s type=%d, val=%s",key0,type, (char*)value);
     		if(y!=NULL)	sprintf(y,"%s=%s    %s\n", key0, (char*)value,_params[itab].desc);
-		}
+		} else ESP_LOGI(__func__,"Failed Key=%s, type=%d, err=%s, nerr=%d",key0,type,esp_err_to_name(err),err);
     }
     else
     {
-    	y[0]=0;
+    	if(y!=NULL) y[0]=0;
     	((char*)value)[0]=0;
     }
     nvs_close(nvs);

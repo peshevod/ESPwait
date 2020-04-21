@@ -275,8 +275,9 @@ static void wifi_prepare()
     tcpip_adapter_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
-    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
     get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
+    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
+    ESP_LOGI(__func__,"SSID=%s PASSWD=%s",sta_config.sta.ssid,sta_config.sta.password);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
     con=1;
@@ -369,11 +370,23 @@ bool state_jp4,state_jp5,alarm_jp4,alarm_jp5;
 char ThingName[20];
 
 
+extern char* pCert;
+extern char* pRoot;
+extern char* pKey;
+
+void init_certs(void)
+{
+
+}
+
+
+
 void send_to_cloud1(bool shadow)
 {
     IoT_Error_t rc = FAILURE;
     char cPayload[256];
 
+    init_certs();
     if(shadow)
     {
         seq_h.cb = NULL;
@@ -451,9 +464,9 @@ void send_to_cloud1(bool shadow)
     		mqttInitParams.pHostURL = HostAddress;
     		mqttInitParams.port = AWS_IOT_MQTT_PORT;
 
-    		mqttInitParams.pRootCALocation = (const char *)aws_root_ca_pem_start;
-    		mqttInitParams.pDeviceCertLocation = (const char *)certificate_pem_crt_start;
-    		mqttInitParams.pDevicePrivateKeyLocation = (const char *)private_pem_key_start;
+    		mqttInitParams.pRootCALocation = pRoot==NULL ? (const char *)aws_root_ca_pem_start : pRoot;
+    		mqttInitParams.pDeviceCertLocation = pCert==NULL ? (const char *)certificate_pem_crt_start : pCert;
+    		mqttInitParams.pDevicePrivateKeyLocation = pKey==NULL ? (const char *)private_pem_key_start : pKey;
 
     		mqttInitParams.mqttCommandTimeout_ms = 20000;
     		mqttInitParams.tlsHandshakeTimeout_ms = 5000;
@@ -474,9 +487,9 @@ void send_to_cloud1(bool shadow)
     		sp.pHost = HostAddress;
             sp.port = AWS_IOT_MQTT_PORT;
 
-            sp.pClientCRT = (const char *)certificate_pem_crt_start;
-            sp.pClientKey = (const char *)private_pem_key_start;
-            sp.pRootCA = (const char *)aws_root_ca_pem_start;
+            sp.pClientCRT = pCert==NULL ? (const char *)certificate_pem_crt_start : pCert;
+            sp.pClientKey = pKey==NULL ? (const char *)private_pem_key_start : pKey;
+            sp.pRootCA = pRoot==NULL ? (const char *)aws_root_ca_pem_start : pRoot;
 
             sp.enableAutoReconnect = false;
             sp.disconnectHandler = disconnectCallbackHandler;

@@ -99,8 +99,6 @@ static void esp_spp_cb(uint16_t e, void *p)
         break;
     case ESP_SPP_CLOSE_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_CLOSE_EVT");
-//        stdin=old_stdin;
-//        stdout=old_stdout;
         console_fd=-1;
         break;
     case ESP_SPP_START_EVT:
@@ -113,10 +111,6 @@ static void esp_spp_cb(uint16_t e, void *p)
         ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT");
         ESP_LOGI(SPP_TAG,"opened fd=%d", param->srv_open.fd);
 //        spp_wr_task_start_up(spp_read_handle, param->srv_open.fd);
-//        old_stdin=stdin;
-//        old_stdout=stdout;
-//        stdin=fdopen(param->srv_open.fd,"r");
-//        stdout=fdopen(param->srv_open.fd,"w");
         console_fd=param->srv_open.fd;
         break;
     default:

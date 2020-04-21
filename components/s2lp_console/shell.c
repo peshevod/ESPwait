@@ -37,7 +37,17 @@ int len=0;
 int gError=0;
 static exchange_par_t read_par;
 extern _param _params[];
-static int console_fd;
+static int volatile console_fd;
+static int w_ready=1;
+static int c_crlf=1;
+static char bufr[BUF_LEN];
+static int lenr=0;
+static int bufr_len=0;
+static char c_prev=0;
+static int do_prev=0;
+static int did_prev=0;
+static int c_next;
+
 
 
 void EUSART1_init(int fd)
@@ -47,6 +57,13 @@ void EUSART1_init(int fd)
 	read_par.fd=console_fd;
     read_par.xSemaphore = xSemaphoreCreateMutex();
 	gError=0;
+	w_ready=1;
+	c_crlf=1;
+	lenr=0;
+	bufr_len=0;
+	c_prev=0;
+	do_prev=0;
+	did_prev=0;
     xTaskCreate(taskRead, "taskRead", 2048, (void *)(&read_par), 5, NULL);
 }
 
@@ -65,14 +82,14 @@ void taskRead(void* param)
 		vRingbufferGetInfo(read_par.rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
 		xSemaphoreGive(((exchange_par_t*)param)->xSemaphore);
 		int l=BUF_LEN<RING_BUF_LEN-uxItemsWaiting ? BUF_LEN : RING_BUF_LEN-uxItemsWaiting;
-		if(l>0) size=read(((exchange_par_t*)param)->fd,buf0,l);
-		else size=0;
-		if(size<0)
+		int k=120000;
+		while(console_fd==-1 && k-->0) vTaskDelay(10 / portTICK_PERIOD_MS);
+		if(console_fd!=-1)
 		{
-			gError=1;
-			break;
-		}
-		if(size!=0)
+			if(l>1) size=read(console_fd,buf0,l-1);
+			else size=0;
+		} else size=-1;
+		if(size>0)
 		{
 			xSemaphoreTake(((exchange_par_t*)param)->xSemaphore,portMAX_DELAY);
 			if(xRingbufferSend(((exchange_par_t*)param)->rb, buf0, size, 0)==pdFALSE)
@@ -88,13 +105,6 @@ void taskRead(void* param)
 	vTaskDelete(NULL);
 }
 
-static char bufr[BUF_LEN];
-static int lenr=0;
-static int bufr_len=0;
-static char c_prev=0;
-static int do_prev=0;
-static int did_prev=0;
-static int c_next;
 
 
 char EUSART1_Read()
@@ -103,7 +113,7 @@ char EUSART1_Read()
 	char c;
 	c=-1;
 	{
-		if(do_prev)
+		if(c_crlf && do_prev)
 		{
 			do_prev=0;
 			if(c_next=='\n') did_prev=1;
@@ -131,7 +141,7 @@ char EUSART1_Read()
 		xSemaphoreGive(read_par.xSemaphore);
 		vTaskDelay(10 / portTICK_PERIOD_MS);
 	}
-	if(c=='\n' || c=='\r')
+	if(c_crlf && (c=='\n' || c=='\r'))
 	{
 		do_prev=1;
 		if(c=='\n' && did_prev)
@@ -167,9 +177,32 @@ int EUSART1_is_rx_ready()
 
 static int w_did=0;
 
+static int c_write(char* c)
+{
+	int k=120000, res;
+	do
+	{
+		if(console_fd!=-1) res=write(console_fd,c,1);
+		else res=-1;
+		if(res!=1)
+		{
+			w_ready=0;
+			vTaskDelay(1 / portTICK_PERIOD_MS);
+		}
+		else
+		{
+			w_ready=1;
+			return 1;
+		}
+	} while (k-->0);
+	w_ready=1;
+	return res;
+}
+
 int EUSART1_Write(char c)
 {
 	char w_c=c;
+	int rc;
 	if(c=='\n' || c=='\r')
 	{
 		if(c=='\n' && w_did)
@@ -178,17 +211,18 @@ int EUSART1_Write(char c)
 			return 1;
 		}
 		w_c='\r';
-		write(console_fd,&w_c,1);
+		rc=c_write(&w_c);
 		w_c='\n';
 		w_did=1;
 	} else w_did=0;
-	write(console_fd,&w_c,1);
-	return 1;
+	rc=c_write(&w_c);
+	return rc;
 }
 
 int EUSART1_is_tx_done()
 {
-	return 1;
+	if(w_ready && console_fd!=-1) return 1;
+	else return 0;
 }
 
 
@@ -228,15 +262,19 @@ static int getcert(char* cert)
 		timer4_expired=0;
 		xTimerStart(Timer4,0);
 		gError=0;
+		c_crlf=0;
 		do
 		{
 			while(!timer4_expired && !EUSART1_is_rx_ready()) vTaskDelay(1/portTICK_RATE_MS);
 			c=EUSART1_Read();
 			if(c=='\xff') continue;
 			if(c==0x1a) break;
+//			if(c=='\n') EUSART1_Write('!');
+//			if(c=='\r') EUSART1_Write('?');
 			EUSART1_Write(c);
 			data[len++]=c;
 		} while(!timer4_expired);
+		c_crlf=1;
 		if(timer4_expired)
 		{
 			free(data);
