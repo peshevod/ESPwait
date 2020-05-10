@@ -46,7 +46,7 @@ static int bufr_len=0;
 static char c_prev=0;
 static int do_prev=0;
 static int did_prev=0;
-static int c_next;
+//static int c_next;
 
 
 
@@ -112,50 +112,44 @@ char EUSART1_Read()
 	size_t size;
 	char c;
 	c=-1;
+	if(c_crlf && do_prev)
 	{
-		if(c_crlf && do_prev)
-		{
-			do_prev=0;
-			if(c_next=='\n') did_prev=1;
-			else did_prev=0;
-			return c_next;
-		}
+		do_prev=0;
+		did_prev=1;
+		return '\n';
 	}
 	while(!gError)
 	{
-		if(bufr_len!=0)
+		while(!gError)
 		{
-			c=bufr[lenr++];
-			if(lenr>=bufr_len) bufr_len=0;
-			break;
+			if(bufr_len!=0)
+			{
+				c=bufr[lenr++];
+				if(lenr>=bufr_len) bufr_len=0;
+				break;
+			}
+			xSemaphoreTake(read_par.xSemaphore,portMAX_DELAY);
+			char* buf1=(char*)xRingbufferReceiveUpTo(read_par.rb, &size,0, BUF_LEN);
+			if(buf1!=NULL)
+			{
+				memcpy(bufr,buf1,size);
+				bufr_len=size;
+				lenr=0;
+				vRingbufferReturnItem(read_par.rb, buf1);
+			}
+			xSemaphoreGive(read_par.xSemaphore);
+			vTaskDelay(10 / portTICK_PERIOD_MS);
 		}
-		xSemaphoreTake(read_par.xSemaphore,portMAX_DELAY);
-		char* buf1=(char*)xRingbufferReceiveUpTo(read_par.rb, &size,0, BUF_LEN);
-		if(buf1!=NULL)
-		{
-			memcpy(bufr,buf1,size);
-			bufr_len=size;
-			lenr=0;
-			vRingbufferReturnItem(read_par.rb, buf1);
-		}
-		xSemaphoreGive(read_par.xSemaphore);
-		vTaskDelay(10 / portTICK_PERIOD_MS);
+		if(!(c_crlf && c=='\n' && did_prev)) break;
+		did_prev=0;
 	}
+	did_prev=0;
 	if(c_crlf && (c=='\n' || c=='\r'))
 	{
+		c='\r';
 		do_prev=1;
-		if(c=='\n' && did_prev)
-		{
-			c_next='\x08';
-			did_prev=0;
-		}
-		else
-		{
-			c_next='\n';
-			c='\r';
-		}
+		did_prev=0;
 	}
-	else did_prev=0;
 	c_prev=c;
 	return c;
 }
