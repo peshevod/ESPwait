@@ -665,20 +665,29 @@ static void s2lp_getdata()
 {
 	input_data_t data_in;
 	S2LPTimerLdcIrqWa(S_ENABLE);
+   	ESP_LOGI("s2lp_getdata","1");
 	S2LPGpioIrqGetStatus(&xIrqStatus);
+   	ESP_LOGI("s2lp_getdata","2");
     if(xIrqStatus.RX_DATA_READY)
     {
         //Get the RX FIFO size
         uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+       	ESP_LOGI("s2lp_getdata","3");
         //Read the RX FIFO
         S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
+       	ESP_LOGI("s2lp_getdata","4");
+        data_in.input_signal_power=S2LPRadioGetRssidBm();
+       	ESP_LOGI("s2lp_getdata","6, %d dbm",data_in.input_signal_power);
         //Flush the RX FIFO
         S2LPCmdStrobeFlushRxFifo();
-        data_in.input_signal_power=S2LPRadioGetRssidBm();
+       	ESP_LOGI("s2lp_getdata","5");
         xQueueSend(s2lp_evt_queue,&data_in,0);
+       	ESP_LOGI("s2lp_getdata","7");
         S2LPCmdStrobeSleep();
+       	ESP_LOGI("s2lp_getdata","8");
     }
     S2LPTimerLdcIrqWa(S_DISABLE);
+   	ESP_LOGI("s2lp_getdata","9");
 }
 
 static void s2lp_wait1()
@@ -690,6 +699,7 @@ static void s2lp_wait1()
     aws_con=0;
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
     s2lp_getdata();
+   	ESP_LOGI("s2lp_wait1","got data from s2lp");
     xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,1);
 	while(xQueueReceive(s2lp_evt_queue,&data,500/portTICK_PERIOD_MS))
 	{
@@ -791,7 +801,9 @@ static void s2lp_rec_start(void *arg)
 
 static void s2lp_rec_start2(void *arg)
 {
+    ESP_LOGI("s2lp_rec_start2","before config_isr0 made");
 	config_isr0();
+    ESP_LOGI("s2lp_rec_start2","config_isr0 made");
     while(1) vTaskDelay(60000);
 }
 
@@ -840,9 +852,11 @@ void app_main(void)
 #ifdef SLEEP
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
-        	ESP_LOGI("app_main","Wakeup!!! num_of_rows=%d",table.n_of_rows);
+        	ESP_LOGI("app_main","Wakeup!!! inerrupt num_of_rows=%d",table.n_of_rows);
 			rtc_gpio_hold_dis(PIN_NUM_SDN);
+//        	ESP_LOGI("app_main","Wakeup!!! disabled hold sdn");
 			S2LPSpiInit();
+//        	ESP_LOGI("app_main","Wakeup!!! spi initiated");
 			s2lp_wait1();
         	break;
         }
