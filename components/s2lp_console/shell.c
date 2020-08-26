@@ -46,11 +46,13 @@ static int bufr_len=0;
 static char c_prev=0;
 static int do_prev=0;
 static int did_prev=0;
+uint8_t stop_console[2];
+
 //static int c_next;
 
 
 
-void EUSART1_init(int fd)
+void EUSART1_init(int fd, console_type con)
 {
 	console_fd=fd;
 	read_par.rb=xRingbufferCreate(RING_BUF_LEN,RINGBUF_TYPE_BYTEBUF);

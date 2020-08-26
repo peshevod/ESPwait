@@ -31,6 +31,7 @@ extern uint8_t s2lp_console_ex;
 extern int volatile console_fd;
 char x[128];
 extern char server_name[40];
+extern uint8_t stop_console[2];
 
 static void initialize_console()
 {
@@ -78,7 +79,7 @@ static void vTimerCallback( TimerHandle_t pxTimer )
 }
 
 
-void start_s2lp_console()
+void bt_console()
 {
     uint32_t uid;
     get_uid(&uid);
@@ -86,6 +87,29 @@ void start_s2lp_console()
     init_spp_server();
     int k=120;
     while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
+}
+
+void start_s2lp_console()
+{
+    size_t len;
+    stop_console[SERIAL_CONSOLE]=0;
+    stop_console[BT_CONSOLE]=0;
+    uart_flush_input(UART_NUM_0);
+	printf("\n Press s key to start serial console...\n");
+    xTaskCreatePinnedToCore(bt_console, "bt_console", 4096, NULL, 10, NULL,1);
+    xTaskCreatePinnedToCore(serial_console, "serial_console", 2048, NULL, 10, NULL,1);
+    init_spp_server();
+    int k=120;
+	do
+	{
+		vTaskDelay(1000 / portTICK_PERIOD_MS);
+    	uart_get_buffered_data_len(UART_NUM_0,&len);
+    	if (len!=0)
+    	{
+    		uart_flush_input(UART_NUM_0);
+    		break;
+    	}
+    } while(--k>0 && console_fd==-1 && len!=0);
 
 //    ESP_LOGI("start_s2lp_console","console_fd=%d",console_fd);
     if(console_fd!=-1)
@@ -98,7 +122,6 @@ void start_s2lp_console()
     shutdown_spp_server();
 
 	printf("\n Press any key to start console...\n");
-    size_t len;
     if(console_fd==-1) uart_flush_input(UART_NUM_0);
 	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
     xTimerStart(Timer3,0);
