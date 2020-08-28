@@ -87,6 +87,28 @@ void bt_console()
     init_spp_server();
     int k=120;
     while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
+    if(console_fd!=-1)
+    {
+    	start_x_shell(BT_CONSOLE);
+    	shutdown_spp_server();
+    	return;
+    }
+    shutdown_spp_server();
+    stop_console[BT_CONSOLE]=2;
+	vTaskDelete(NULL);
+}
+
+void serial_console()
+{
+    uint32_t uid;
+    get_uid(&uid);
+	esp_vfs_dev_uart_register();
+	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
+	esp_vfs_dev_uart_use_driver(UART_NUM_0);
+   	start_x_shell(SERIAL_CONSOLE);
+    stop_console[SERIAL_CONSOLE]=2;
+	vTaskDelete(NULL);
 }
 
 void start_s2lp_console()
@@ -95,33 +117,15 @@ void start_s2lp_console()
     stop_console[SERIAL_CONSOLE]=0;
     stop_console[BT_CONSOLE]=0;
     uart_flush_input(UART_NUM_0);
-	printf("\n Press s key to start serial console...\n");
-    xTaskCreatePinnedToCore(bt_console, "bt_console", 4096, NULL, 10, NULL,1);
+    xTaskCreatePinnedToCore(bt_console, "bt_console", 8192, NULL, 10, NULL,1);
     xTaskCreatePinnedToCore(serial_console, "serial_console", 2048, NULL, 10, NULL,1);
-    init_spp_server();
-    int k=120;
-	do
-	{
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-    	uart_get_buffered_data_len(UART_NUM_0,&len);
-    	if (len!=0)
-    	{
-    		uart_flush_input(UART_NUM_0);
-    		break;
-    	}
-    } while(--k>0 && console_fd==-1 && len!=0);
 
-//    ESP_LOGI("start_s2lp_console","console_fd=%d",console_fd);
-    if(console_fd!=-1)
-    {
-    	EUSART1_init(console_fd);
-    	start_x_shell();
-    	shutdown_spp_server();
-    	return;
-    }
-    shutdown_spp_server();
+    while(stop_console[0]!=2 || stop_console[1]!=2) vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-	printf("\n Press any key to start console...\n");
+
+    return;
+
+    printf("\n Press any key to start console...\n");
     if(console_fd==-1) uart_flush_input(UART_NUM_0);
 	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
     xTimerStart(Timer3,0);

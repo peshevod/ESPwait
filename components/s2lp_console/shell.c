@@ -17,60 +17,53 @@
 #include "freertos/timers.h"
 #include "esp_log.h"
 #include "cmd_nvs.h"
+#include "driver/uart.h"
 
 #include "esp_vfs.h"
+#include "esp_vfs_dev.h"
 #include "sys/unistd.h"
 #include "mbedtls/md5.h"
 
 char t[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
-char c_buf[BUF_LEN], val_buf[BUF_LEN];
-uint8_t c_len;
-uint8_t hex=0;
 char prompt[] = {"ESPWait> "};
 char err[] = {"Error\nESPWait> "};
 char ex[] = {"Exit\n"};
 char commands[] = {'S', 'L', 'D'};
 char ver[]={"=== S2-LP shell v 1.1.5 ===\n"};
 
-int len=0;
-int gError=0;
-static exchange_par_t read_par;
+static exchange_par_t z[2];
 extern _param _params[];
 static int volatile console_fd;
-static int w_ready=1;
-static int c_crlf=1;
-static char bufr[BUF_LEN];
-static int lenr=0;
-static int bufr_len=0;
-static char c_prev=0;
-static int do_prev=0;
-static int did_prev=0;
 uint8_t stop_console[2];
 
 //static int c_next;
 
 
 
-void EUSART1_init(int fd, console_type con)
+void EUSART1_init(console_type con)
 {
-	console_fd=fd;
-	read_par.rb=xRingbufferCreate(RING_BUF_LEN,RINGBUF_TYPE_BYTEBUF);
-	read_par.fd=console_fd;
-    read_par.xSemaphore = xSemaphoreCreateMutex();
-	gError=0;
-	w_ready=1;
-	c_crlf=1;
-	lenr=0;
-	bufr_len=0;
-	c_prev=0;
-	do_prev=0;
-	did_prev=0;
-    xTaskCreate(taskRead, "taskRead", 2048, (void *)(&read_par), 5, NULL);
+	char tname[10];
+	z[con].rb=xRingbufferCreate(RING_BUF_LEN,RINGBUF_TYPE_BYTEBUF);
+    z[con].xSemaphore = xSemaphoreCreateMutex();
+    z[con].gError=0;
+	z[con].c_len=0;
+	z[con].hex=0;
+	z[con].w_ready=1;
+	z[con].c_crlf=1;
+	z[con].lenr=0;
+	z[con].bufr_len=0;
+	z[con].c_prev=0;
+	z[con].do_prev=0;
+	z[con].did_prev=0;
+	z[con].w_did=0;
+	if(con) strcpy(tname,"taskRead1"); else strcpy(tname,"taskRead0");
+    xTaskCreate(taskRead, tname, 2048, (void *)(con), 5, NULL);
 }
 
 void taskRead(void* param)
 {
+	console_type con=(console_type)param;
 	UBaseType_t uxFree;
 	UBaseType_t uxRead;
 	UBaseType_t uxWrite;
@@ -78,29 +71,36 @@ void taskRead(void* param)
 	UBaseType_t uxItemsWaiting;
 	int size;
 	char buf0[BUF_LEN];
-	while(!gError)
+	int l;
+	int k;
+	while(!z[con].gError)
 	{
-		xSemaphoreTake(((exchange_par_t*)param)->xSemaphore,portMAX_DELAY);
-		vRingbufferGetInfo(read_par.rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
-		xSemaphoreGive(((exchange_par_t*)param)->xSemaphore);
-		int l=BUF_LEN<RING_BUF_LEN-uxItemsWaiting ? BUF_LEN : RING_BUF_LEN-uxItemsWaiting;
-		int k=120000;
-		while(console_fd==-1 && k-->0) vTaskDelay(10 / portTICK_PERIOD_MS);
-		if(console_fd!=-1)
+		if(stop_console[con]) break;
+		xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
+		vRingbufferGetInfo(z[con].rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
+		xSemaphoreGive(z[con].xSemaphore);
+		l=BUF_LEN<RING_BUF_LEN-uxItemsWaiting ? BUF_LEN : RING_BUF_LEN-uxItemsWaiting;
+		k=120000;
+		while((console_fd==-1 && con==BT_CONSOLE) && k-->0 && !stop_console[con])
 		{
-			if(l>1) size=read(console_fd,buf0,l-1);
+			vTaskDelay(10 / portTICK_PERIOD_MS);
+		}
+		if(stop_console[con]) break;
+		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)
+		{
+			if(l>1) size=read(con==BT_CONSOLE ? console_fd : 0,buf0,l-1);
 			else size=0;
 		} else size=-1;
 		if(size>0)
 		{
-			xSemaphoreTake(((exchange_par_t*)param)->xSemaphore,portMAX_DELAY);
-			if(xRingbufferSend(((exchange_par_t*)param)->rb, buf0, size, 0)==pdFALSE)
+			xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
+			if(xRingbufferSend(z[con].rb, buf0, size, 0)==pdFALSE)
 			{
-				xSemaphoreGive(((exchange_par_t*)param)->xSemaphore);
-				gError=11;
+				xSemaphoreGive(z[con].xSemaphore);
+				z[con].gError=11;
 				break;
 			}
-			xSemaphoreGive(((exchange_par_t*)param)->xSemaphore);
+			xSemaphoreGive(z[con].xSemaphore);
 		}
 		vTaskDelay(10 / portTICK_PERIOD_MS);
 	}
@@ -109,140 +109,142 @@ void taskRead(void* param)
 
 
 
-char EUSART1_Read()
+char EUSART1_Read(console_type con)
 {
 	size_t size;
 	char c;
 	c=-1;
-	if(c_crlf && do_prev)
+	if(z[con].c_crlf && z[con].do_prev)
 	{
-		do_prev=0;
-		did_prev=1;
+		z[con].do_prev=0;
+		z[con].did_prev=1;
 		return '\n';
 	}
-	while(!gError)
+	while(!z[con].gError)
 	{
-		while(!gError)
+		while(!z[con].gError)
 		{
-			if(bufr_len!=0)
+			if(z[con].bufr_len!=0)
 			{
-				c=bufr[lenr++];
-				if(lenr>=bufr_len) bufr_len=0;
+				c=z[con].bufr[z[con].lenr++];
+				if(z[con].lenr>=z[con].bufr_len) z[con].bufr_len=0;
 				break;
 			}
-			xSemaphoreTake(read_par.xSemaphore,portMAX_DELAY);
-			char* buf1=(char*)xRingbufferReceiveUpTo(read_par.rb, &size,0, BUF_LEN);
+			xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
+			char* buf1=(char*)xRingbufferReceiveUpTo(z[con].rb, &size,0, BUF_LEN);
 			if(buf1!=NULL)
 			{
-				memcpy(bufr,buf1,size);
-				bufr_len=size;
-				lenr=0;
-				vRingbufferReturnItem(read_par.rb, buf1);
+				memcpy(z[con].bufr,buf1,size);
+				z[con].bufr_len=size;
+				z[con].lenr=0;
+				vRingbufferReturnItem(z[con].rb, buf1);
 			}
-			xSemaphoreGive(read_par.xSemaphore);
+			xSemaphoreGive(z[con].xSemaphore);
 			vTaskDelay(10 / portTICK_PERIOD_MS);
 		}
-		if(!(c_crlf && c=='\n' && did_prev)) break;
-		did_prev=0;
+		if(!(z[con].c_crlf && c=='\n' && z[con].did_prev)) break;
+		z[con].did_prev=0;
 	}
-	did_prev=0;
-	if(c_crlf && (c=='\n' || c=='\r'))
+	z[con].did_prev=0;
+	if(z[con].c_crlf && (c=='\n' || c=='\r'))
 	{
 		c='\r';
-		do_prev=1;
-		did_prev=0;
+		z[con].do_prev=1;
+		z[con].did_prev=0;
 	}
-	c_prev=c;
+	z[con].c_prev=c;
 	return c;
 }
 
-int EUSART1_is_rx_ready()
+int EUSART1_is_rx_ready(console_type con)
 {
 	UBaseType_t uxFree;
 	UBaseType_t uxRead;
 	UBaseType_t uxWrite;
 	UBaseType_t uxAcquire;
 	UBaseType_t uxItemsWaiting;
-	if(bufr_len!=0 || do_prev) return 1;
-	xSemaphoreTake(read_par.xSemaphore,portMAX_DELAY);
-	vRingbufferGetInfo(read_par.rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
-	xSemaphoreGive(read_par.xSemaphore);
+	if(z[con].bufr_len!=0 || z[con].do_prev) return 1;
+	xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
+	vRingbufferGetInfo(z[con].rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
+	xSemaphoreGive(z[con].xSemaphore);
 	if(uxItemsWaiting>0) return 1;
 	else return 0;
 }
 
-static int w_did=0;
-
-static int c_write(char* c)
+static int c_write(console_type con, char* c)
 {
 	int k=120000, res;
 	do
 	{
-		if(console_fd!=-1) res=write(console_fd,c,1);
+		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE) res=write(con==BT_CONSOLE ? console_fd : 1,c,1);
 		else res=-1;
 		if(res!=1)
 		{
-			w_ready=0;
+			z[con].w_ready=0;
 			vTaskDelay(1 / portTICK_PERIOD_MS);
 		}
 		else
 		{
-			w_ready=1;
+			z[con].w_ready=1;
 			return 1;
 		}
 	} while (k-->0);
-	w_ready=1;
+	z[con].w_ready=1;
 	return res;
 }
 
-int EUSART1_Write(char c)
+int EUSART1_Write(console_type con, char c)
 {
 	char w_c=c;
 	int rc;
 	if(c=='\n' || c=='\r')
 	{
-		if(c=='\n' && w_did)
+		if(c=='\n' && z[con].w_did)
 		{
-			w_did=0;
+			z[con].w_did=0;
 			return 1;
 		}
 		w_c='\r';
-		rc=c_write(&w_c);
+		rc=c_write(con, &w_c);
 		w_c='\n';
-		w_did=1;
-	} else w_did=0;
-	rc=c_write(&w_c);
+		z[con].w_did=1;
+	} else z[con].w_did=0;
+	rc=c_write(con, &w_c);
 	return rc;
 }
 
-int EUSART1_is_tx_done()
+int EUSART1_is_tx_done(console_type con)
 {
-	if(w_ready && console_fd!=-1) return 1;
+	if(z[con].w_ready && ((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)) return 1;
 	else return 0;
 }
 
 
-void send_chars(char* x) {
+void send_chars(console_type con, char* x) {
     uint8_t i=0;
-    while(x[i]!=0) EUSART1_Write(x[i++]);
-    while (!EUSART1_is_tx_done());
+    while(x[i]!=0) EUSART1_Write(con, x[i++]);
+    while (!EUSART1_is_tx_done(con));
 }
 
 
-void empty_RXbuffer() {
-    while (EUSART1_is_rx_ready()) EUSART1_Read();
+void empty_RXbuffer(console_type con) {
+    while (EUSART1_is_rx_ready(con)) EUSART1_Read(con);
 }
 
-static int volatile timer4_expired=0;
-char* data;
+static int volatile timer4_expired[2];
 
-static void Timer4Callback( TimerHandle_t pxTimer )
+static void Timer4Callback0( TimerHandle_t pxTimer )
 {
-	timer4_expired=1;
+	timer4_expired[0]=1;
+}
+
+static void Timer4Callback1( TimerHandle_t pxTimer )
+{
+	timer4_expired[1]=1;
 }
 
 
-static int getcert(char* cert)
+static int getcert(console_type con, char* cert)
 {
 	int len=0;
 	char c;
@@ -253,38 +255,38 @@ static int getcert(char* cert)
 	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
 	{
 		char* data=(char*)malloc(4096);
-		send_chars("Sent certificate or key, at the end please press Ctrl-Z...\n");
-		TimerHandle_t Timer4=xTimerCreate("Timer4",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback);
-		timer4_expired=0;
+		send_chars(con, "Sent certificate or key, at the end please press Ctrl-Z...\n");
+		timer4_expired[con]=0;
+		TimerHandle_t Timer4= con==1 ? xTimerCreate("Timer41",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback1) : xTimerCreate("Timer40",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback0);
 		xTimerStart(Timer4,0);
-		gError=0;
-		c_crlf=0;
+		z[con].gError=0;
+		z[con].c_crlf=0;
 		do
 		{
-			while(!timer4_expired && !EUSART1_is_rx_ready()) vTaskDelay(1/portTICK_RATE_MS);
-			c=EUSART1_Read();
+			while(!timer4_expired[con] && !EUSART1_is_rx_ready(con)) vTaskDelay(1/portTICK_RATE_MS);
+			c=EUSART1_Read(con);
 			if(c=='\xff') continue;
 			if(c==0x1a) break;
 //			if(c=='\n') EUSART1_Write('!');
 //			if(c=='\r') EUSART1_Write('?');
-			EUSART1_Write(c);
+			EUSART1_Write(con,c);
 			data[len++]=c;
-		} while(!timer4_expired);
-		c_crlf=1;
-		if(timer4_expired)
+		} while(!timer4_expired[con]);
+		z[con].c_crlf=1;
+		if(timer4_expired[con])
 		{
 			free(data);
 			return 2;
 		}
 		if(mbedtls_md5_ret((const unsigned char*)data,len,md5))
 		{
-			send_chars("Error while calculating MD5\n");
+			send_chars(con, "Error while calculating MD5\n");
 			free(data);
 			return 2;
 		}
 		sprintf(str_md5,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",md5[0],md5[1],md5[2],md5[3],md5[4],md5[5],md5[6],md5[7],md5[8],md5[9],md5[10],md5[11],md5[12],md5[13],md5[14],md5[15]);
 		sprintf(str,"\nCheck MD5 sum: %s\n",str_md5);
-		send_chars(str);
+		send_chars(con, str);
 		strcpy(key_name,"MD5");
 		strcat(key_name,cert);
 		if(set_cert(cert,data,len)==ESP_OK)
@@ -303,7 +305,7 @@ static int getcert(char* cert)
 
 
 
-void print_par(char* p)
+void print_par(console_type con, char* p)
 {
 	char value[64];
 	char y[256];
@@ -312,8 +314,8 @@ void print_par(char* p)
     {
         if(!strcmp(__params->c,p))
         {
-        	get_value_from_nvs(p, hex, y, value);
-        	send_chars(y);
+        	get_value_from_nvs(p, z[con].hex, y, value);
+        	send_chars(con, y);
             return;
         }
         __params++;
@@ -321,7 +323,7 @@ void print_par(char* p)
 }
 
 
-void EUSART1_list()
+void EUSART1_list(console_type con)
 {
 	char value[64];
 	char y[256];
@@ -329,39 +331,41 @@ void EUSART1_list()
 	list_init();
 	do
 	{
-		rc=list(hex,y,value);
-		send_chars(y);
+		rc=list(z[con].hex,y,value);
+		send_chars(con, y);
 	} while(rc==1);
 }
 
 
-uint8_t proceed() {
+uint8_t proceed(console_type con) {
     uint8_t i = 0, cmd, j;
     char par[16];
     //    printf("proceed %s\r\n",c_buf);
-    c_buf[c_len] = 0;
-    cmd = c_buf[i++];
+    z[con].c_buf[z[con].c_len] = 0;
+    cmd = z[con].c_buf[i++];
     if(cmd==0) return 1;
-    if(c_buf[1]=='X')
+    if(z[con].c_buf[1]=='X')
     {
-        hex=1;
+        z[con].hex=1;
         i++;
     }
-    else hex=0;
-    if (cmd == 'Q' && c_buf[i] == 0) {
+    else z[con].hex=0;
+    if (cmd == 'Q' && z[con].c_buf[i] == 0) {
+    	stop_console[0]=1;
+    	stop_console[1]=1;
         send_exit();
         return 0;
     }
-    if (cmd == 'L' && c_buf[i] == 0) {
+    if (cmd == 'L' && z[con].c_buf[i] == 0) {
 //        print_pars();
-    	EUSART1_list();
+    	EUSART1_list(con);
         return 1;
     }
-    while (c_buf[i] == ' ' || c_buf[i] == '\t') i++;
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
     j=0;
-    while (c_buf[i] != ' ' && c_buf[i]!='=' && c_buf[i] != 0)
+    while (z[con].c_buf[i] != ' ' && z[con].c_buf[i]!='=' && z[con].c_buf[i] != 0)
     {
-    	par[j++] = c_buf[i++];
+    	par[j++] = z[con].c_buf[i++];
     }
     par[j]=0;
     uint8_t ip = 0, ip0 = 0xff;
@@ -375,83 +379,88 @@ uint8_t proceed() {
     if (ip0 == 0xff) return 2;
     if (cmd == 'D')
     {
-        print_par(par);
+        print_par(con, par);
         return 1;
     }
     if(cmd=='G')
     {
-    	return getcert(par);
+    	return getcert(con, par);
     }
     if(cmd!='S') return 2;
 //    i++;
-    while (c_buf[i] == ' ' || c_buf[i] == '\t') i++;
-    if (c_buf[i++] != '=') return 2;
-    while (c_buf[i] == ' ' || c_buf[i] == '\t') i++;
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
+    if (z[con].c_buf[i++] != '=') return 2;
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
     ip = 0;
     do {
-        val_buf[ip++] = c_buf[i];
-    } while (c_buf[i++]);
-    val_buf[ip]=0;
-    set_value_in_nvs(par, val_buf);
-    print_par(par);
+    	z[con].val_buf[ip++] = z[con].c_buf[i];
+    } while (z[con].c_buf[i++]);
+    z[con].val_buf[ip]=0;
+    set_value_in_nvs(par, z[con].val_buf);
+    print_par(con, par);
     return 1;
 }
 
-static int volatile s2lp_console_timer_expired=0;
+static int volatile s2lp_console_timer_expired[2];
 
-static void vTimerCallback( TimerHandle_t pxTimer )
+static void vTimerCallback0( TimerHandle_t pxTimer )
 {
-	s2lp_console_timer_expired=1;
+	s2lp_console_timer_expired[0]=1;
+}
+
+static void vTimerCallback1( TimerHandle_t pxTimer )
+{
+	s2lp_console_timer_expired[1]=1;
 }
 
 
-void start_x_shell(void) {
+void start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
-    c_len = 0;
+    EUSART1_init(con);
     add_uid();
-	send_chars("\n Press any key to start console...\n");
-	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
+	send_chars(con, "\n Press any key to start console...\n");
+	TimerHandle_t Timer3= con==0 ? xTimerCreate("Timer30",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback0) : xTimerCreate("Timer31",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback1);
     xTimerStart(Timer3,0);
-    s2lp_console_timer_expired=0;
-    send_chars(ver);
+    s2lp_console_timer_expired[con]=0;
+    send_chars(con, ver);
     send_prompt();
     while (1)
     {
-        if (!start && s2lp_console_timer_expired)
+        if ((!start && s2lp_console_timer_expired[con]) || stop_console[con] )
         {
-            send_exit();
+        	send_exit();
             return;
         }
-        if (EUSART1_is_rx_ready())
+        if (EUSART1_is_rx_ready(con))
         {
-            c = EUSART1_Read();
-            EUSART1_Write(c);
+            c = EUSART1_Read(con);
+            EUSART1_Write(con, c);
             if (c == 0x08) {
-                EUSART1_Write(' ');
-                EUSART1_Write(c);
-                c_len--;
-                while (!EUSART1_is_tx_done());
+                EUSART1_Write(con, ' ');
+                EUSART1_Write(con, c);
+                z[con].c_len--;
+                while (!EUSART1_is_tx_done(con));
                 continue;
             }
-            while (!EUSART1_is_tx_done());
+            while (!EUSART1_is_tx_done(con) || stop_console[con]);
             start = 1;
             switch (c) {
                 case '\r':
-                    c_buf[c_len] = 0;
-                    empty_RXbuffer();
-                    uint8_t r = proceed();
+                    z[con].c_buf[z[con].c_len] = 0;
+                    empty_RXbuffer(con);
+                    uint8_t r = proceed(con);
                     if (r == 0) return;
                     if (r != 1) send_error()
                     else send_prompt();
                     break;
                 default:
                     if (c >= 0x61 && c <= 0x7A) c -= 0x20;
-                    c_buf[c_len++] = c;
+                    z[con].c_buf[z[con].c_len++] = c;
                     continue;
             }
-            empty_RXbuffer();
-            c_len = 0;
+            empty_RXbuffer(con);
+            z[con].c_len = 0;
         }
     }
 }
