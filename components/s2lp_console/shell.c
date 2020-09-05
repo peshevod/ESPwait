@@ -34,9 +34,9 @@ char ver[]={"=== S2-LP shell v 1.1.5 ===\n"};
 
 static exchange_par_t z[2];
 extern _param _params[];
-static int volatile console_fd;
+extern int volatile console_fd;
 uint8_t stop_console[2];
-
+TaskHandle_t rtask[2];
 //static int c_next;
 
 
@@ -58,7 +58,7 @@ void EUSART1_init(console_type con)
 	z[con].did_prev=0;
 	z[con].w_did=0;
 	if(con) strcpy(tname,"taskRead1"); else strcpy(tname,"taskRead0");
-    xTaskCreate(taskRead, tname, 2048, (void *)(con), 5, NULL);
+    xTaskCreate(taskRead, tname, 2048, (void *)(con), 5, &(rtask[con]));
 }
 
 void taskRead(void* param)
@@ -188,6 +188,7 @@ static int c_write(console_type con, char* c)
 			z[con].w_ready=1;
 			return 1;
 		}
+		if(con==BT_CONSOLE) send_chars(SERIAL_CONSOLE,".");
 	} while (k-->0);
 	z[con].w_ready=1;
 	return res;
@@ -215,8 +216,15 @@ int EUSART1_Write(console_type con, char c)
 
 int EUSART1_is_tx_done(console_type con)
 {
-	if(z[con].w_ready && ((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)) return 1;
-	else return 0;
+	if(z[con].w_ready && ((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE))
+	{
+		return 1;
+	}
+	else
+	{
+//		if(con==BT_CONSOLE)send_chars(SERIAL_CONSOLE,".");
+		return 0;
+	}
 }
 
 
@@ -417,10 +425,11 @@ static void vTimerCallback1( TimerHandle_t pxTimer )
 void start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
+    char str[25];
     EUSART1_init(con);
     add_uid();
 	send_chars(con, "\n Press any key to start console...\n");
-	TimerHandle_t Timer3= con==0 ? xTimerCreate("Timer30",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback0) : xTimerCreate("Timer31",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback1);
+	TimerHandle_t Timer3= con==0 ? xTimerCreate("Timer30",60000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback0) : xTimerCreate("Timer31",60000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback1);
     xTimerStart(Timer3,0);
     s2lp_console_timer_expired[con]=0;
     send_chars(con, ver);
@@ -430,6 +439,8 @@ void start_x_shell(console_type con) {
         if ((!start && s2lp_console_timer_expired[con]) || stop_console[con] )
         {
         	send_exit();
+        	stop_console[con]=1;
+        	vTaskDelete(rtask[con]);
             return;
         }
         if (EUSART1_is_rx_ready(con))
@@ -450,7 +461,12 @@ void start_x_shell(console_type con) {
                     z[con].c_buf[z[con].c_len] = 0;
                     empty_RXbuffer(con);
                     uint8_t r = proceed(con);
-                    if (r == 0) return;
+                    if (r == 0)
+                    {
+                    	vTaskDelete(rtask[con]);
+                    	vTaskDelay(500 / portTICK_PERIOD_MS);
+                    	return;
+                    }
                     if (r != 1) send_error()
                     else send_prompt();
                     break;

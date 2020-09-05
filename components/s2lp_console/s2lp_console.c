@@ -86,12 +86,13 @@ void bt_console()
     sprintf(server_name,"ESPWAIT-%08X",uid);
     init_spp_server();
     int k=120;
-    while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
+    while(--k>0 && console_fd==-1)
+    {
+    	vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
     if(console_fd!=-1)
     {
     	start_x_shell(BT_CONSOLE);
-    	shutdown_spp_server();
-    	return;
     }
     shutdown_spp_server();
     stop_console[BT_CONSOLE]=2;
@@ -121,7 +122,7 @@ void start_s2lp_console()
     xTaskCreatePinnedToCore(serial_console, "serial_console", 2048, NULL, 10, NULL,1);
 
     while(stop_console[0]!=2 || stop_console[1]!=2) vTaskDelay(1000 / portTICK_PERIOD_MS);
-
+    printf("\n Stopped all consoles\n");
 
     return;
 
