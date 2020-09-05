@@ -2,3 +2,8 @@
 .project
 .cproject
 .settings/
+LICENSE
+README.md
+/components/esp-aws-iot/
+/main/certs/
+!/main/certs/aws-root-ca.pem
