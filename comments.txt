@@ -1,0 +1,1 @@
+From the directory "components" start git clone --recursive https://github.com/espressif/esp-aws-iot
