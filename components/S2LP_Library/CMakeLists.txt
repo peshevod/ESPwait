@@ -1,5 +1,5 @@
 # Edit following two lines to set component requirements (see docs)
-idf_component_register(SRCS "Src/MCU_interface.c"
+idf_component_register(SRCS "Src/MCU_Interface.c"
 							"Src/S2LP_Commands.c"
 							"Src/S2LP_Csma.c"
 							"Src/S2LP_Fifo.c"

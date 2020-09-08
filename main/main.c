@@ -24,7 +24,7 @@
 #include "main.h"
 #include "S2LP_Config.h"
 #include "radio.h"
-#include "MCU_interface.h"
+#include "MCU_Interface.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "aws_iot_config.h"
