@@ -434,11 +434,13 @@ static int volatile s2lp_console_timer_expired[2];
 static void vTimerCallback0( TimerHandle_t pxTimer )
 {
 	s2lp_console_timer_expired[0]=1;
+	ESP_LOGI("vTimerCallback0", "Timer expired");
 }
 
 static void vTimerCallback1( TimerHandle_t pxTimer )
 {
 	s2lp_console_timer_expired[1]=1;
+	ESP_LOGI("vTimerCallback1", "Timer expired");
 }
 
 
@@ -451,7 +453,20 @@ void start_x_shell(console_type con) {
     add_uid();
 	send_chars(con, "\n Press any key to start console...\n");
 	TimerHandle_t Timer3= con==SERIAL_CONSOLE ? xTimerCreate("Timer30",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback0) : xTimerCreate("Timer31",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback1);
-    xTimerStart(Timer3,0);
+    if(Timer3==NULL)
+    {
+    	ESP_LOGI("start_x_shell","Timer not created, console=%d",con);
+        send_exit();
+        stop_console[con]=1;
+    	return;
+    }
+	if(xTimerStart(Timer3,0)!=pdPASS)
+	{
+    	ESP_LOGI("start_x_shell","Timer not started, console=%d",con);
+        send_exit();
+        stop_console[con]=1;
+    	return;
+	}
     s2lp_console_timer_expired[con]=0;
     send_chars(con, ver);
     send_prompt();
@@ -499,6 +514,7 @@ void start_x_shell(console_type con) {
             empty_RXbuffer(con);
             z[con].c_len = 0;
         }
+        vTaskDelay(100/portTICK_RATE_MS);
     }
 }
 
