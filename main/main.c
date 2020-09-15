@@ -700,7 +700,7 @@ static void s2lp_wait1()
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
     s2lp_getdata();
    	ESP_LOGI("s2lp_wait1","got data from s2lp");
-    xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,1);
+    xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,0);
 	while(xQueueReceive(s2lp_evt_queue,&data,500/portTICK_PERIOD_MS))
 	{
         ESP_LOGI("s2lp_getdata","REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
@@ -881,7 +881,7 @@ void app_main(void)
 	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
 //	start_x_shell();
 #ifndef SLEEP
-    xTaskCreatePinnedToCore(s2lp_rec_start, "s2lp_rec_start", 8192, NULL, 10, NULL,1);
+    xTaskCreatePinnedToCore(s2lp_rec_start, "s2lp_rec_start", 8192, NULL, 10, NULL,0);
     xTaskCreatePinnedToCore(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL,0);
 #endif
     while(1)

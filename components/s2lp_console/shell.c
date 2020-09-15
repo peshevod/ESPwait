@@ -1,7 +1,7 @@
 /*
  * shell.c
  *
- *  Created on: 15 апр. 2020 г.
+ *  Created on: 15 пїЅпїЅпїЅ. 2020 пїЅ.
  *      Author: ilya_000
  */
 
@@ -88,9 +88,19 @@ void taskRead(void* param)
 		if(stop_console[con]) break;
 		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)
 		{
-			if(l>1) size=read(con==BT_CONSOLE ? console_fd : 0,buf0,l-1);
+			if(l>1)
+			{
+				size=-1;
+				if(con==BT_CONSOLE) size=read(console_fd,buf0,l-1);
+				if(con==SERIAL_CONSOLE) size=uart_read_bytes(UART_NUM_0,(uint8_t*)buf0,l-1,1);
+			}
 			else size=0;
-		} else size=-1;
+		}
+		else
+		{
+			stop_console[con]=1;
+			break;
+		}
 		if(size>0)
 		{
 			xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
@@ -176,8 +186,18 @@ static int c_write(console_type con, char* c)
 	int k=120000, res;
 	do
 	{
-		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE) res=write(con==BT_CONSOLE ? console_fd : 1,c,1);
-		else res=-1;
+		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)
+		{
+			res=-1;
+			if(con==BT_CONSOLE) res=write(console_fd,c,1);
+			if(con==SERIAL_CONSOLE) res=uart_write_bytes(UART_NUM_0,c,1);
+		}
+		else
+		{
+			stop_console[con]=1;
+			res=-1;
+			break;
+		}
 		if(res!=1)
 		{
 			z[con].w_ready=0;
@@ -231,7 +251,7 @@ int EUSART1_is_tx_done(console_type con)
 void send_chars(console_type con, char* x) {
     uint8_t i=0;
     while(x[i]!=0) EUSART1_Write(con, x[i++]);
-    while (!EUSART1_is_tx_done(con));
+    while (!EUSART1_is_tx_done(con)) if(stop_console[con]) return;
 }
 
 
@@ -359,8 +379,8 @@ uint8_t proceed(console_type con) {
     }
     else z[con].hex=0;
     if (cmd == 'Q' && z[con].c_buf[i] == 0) {
-    	stop_console[0]=1;
-    	stop_console[1]=1;
+    	stop_console[SERIAL_CONSOLE]=1;
+    	stop_console[BT_CONSOLE]=1;
         send_exit();
         return 0;
     }
@@ -425,11 +445,12 @@ static void vTimerCallback1( TimerHandle_t pxTimer )
 void start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
+    int32_t x=con;
     char str[25];
     EUSART1_init(con);
     add_uid();
 	send_chars(con, "\n Press any key to start console...\n");
-	TimerHandle_t Timer3= con==0 ? xTimerCreate("Timer30",60000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback0) : xTimerCreate("Timer31",60000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback1);
+	TimerHandle_t Timer3= con==SERIAL_CONSOLE ? xTimerCreate("Timer30",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback0) : xTimerCreate("Timer31",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback1);
     xTimerStart(Timer3,0);
     s2lp_console_timer_expired[con]=0;
     send_chars(con, ver);
@@ -440,7 +461,7 @@ void start_x_shell(console_type con) {
         {
         	send_exit();
         	stop_console[con]=1;
-        	vTaskDelete(rtask[con]);
+//        	vTaskDelete(rtask[con]);
             return;
         }
         if (EUSART1_is_rx_ready(con))
@@ -463,7 +484,7 @@ void start_x_shell(console_type con) {
                     uint8_t r = proceed(con);
                     if (r == 0)
                     {
-                    	vTaskDelete(rtask[con]);
+//                    	vTaskDelete(rtask[con]);
                     	vTaskDelay(500 / portTICK_PERIOD_MS);
                     	return;
                     }
