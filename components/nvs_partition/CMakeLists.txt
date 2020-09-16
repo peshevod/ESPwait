@@ -10,4 +10,4 @@ set_property(DIRECTORY "${COMPONENT_PATH}" APPEND PROPERTY
      ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin)
 # Set values used in flash_s2lp_args.in and generate flash file
 # for s2lp
-esptool_py_flash_project_args(s2lp 0x170000 ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin FLASH_IN_PROJECT)
+esptool_py_flash_project_args(s2lp 0x190000 ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin FLASH_IN_PROJECT)

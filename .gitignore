@@ -4,5 +4,5 @@
 .settings/
 LICENSE
 README.md
-/main/certs/
+/main/certs/*
 !/main/certs/aws-root-ca.pem

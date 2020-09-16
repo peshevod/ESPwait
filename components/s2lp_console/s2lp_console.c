@@ -31,6 +31,7 @@ extern uint8_t s2lp_console_ex;
 extern int volatile console_fd;
 char x[128];
 extern char server_name[40];
+extern uint8_t stop_console[2];
 
 static void initialize_console()
 {
@@ -78,27 +79,59 @@ static void vTimerCallback( TimerHandle_t pxTimer )
 }
 
 
-void start_s2lp_console()
+void bt_console()
 {
     uint32_t uid;
     get_uid(&uid);
     sprintf(server_name,"ESPWAIT-%08X",uid);
     init_spp_server();
     int k=120;
-    while(--k>0 && console_fd==-1) vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-//    ESP_LOGI("start_s2lp_console","console_fd=%d",console_fd);
+    while(--k>0 && console_fd==-1)
+    {
+    	vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
     if(console_fd!=-1)
     {
-    	EUSART1_init(console_fd);
-    	start_x_shell();
-    	shutdown_spp_server();
-    	return;
+    	start_x_shell(BT_CONSOLE);
     }
+    ESP_LOGI("bt_console","shutting SPP server\n");
     shutdown_spp_server();
+    ESP_LOGI("bt_console","BT_CONSOLE stopped\n");
+    stop_console[BT_CONSOLE]=2;
+	vTaskDelete(NULL);
+}
 
-	printf("\n Press any key to start console...\n");
+void serial_console()
+{
+    uint32_t uid;
+    get_uid(&uid);
+//	esp_vfs_dev_uart_register();
+//	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+//	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
+//	esp_vfs_dev_uart_use_driver(UART_NUM_0);
+//	esp_vfs_dev_uart_use_nonblocking(UART_NUM_0);
+   	start_x_shell(SERIAL_CONSOLE);
+    ESP_LOGI("serial_console","SERIAL CONSOLE stopped\n");
+    stop_console[SERIAL_CONSOLE]=2;
+	vTaskDelete(NULL);
+}
+
+void start_s2lp_console()
+{
     size_t len;
+    stop_console[SERIAL_CONSOLE]=0;
+    stop_console[BT_CONSOLE]=0;
+    uart_flush_input(UART_NUM_0);
+    xTaskCreatePinnedToCore(bt_console, "bt_console", 8192, NULL, 10, NULL,0);
+    xTaskCreatePinnedToCore(serial_console, "serial_console", 4096, NULL, 10, NULL,0);
+//    vTaskStartScheduler();
+
+    while(stop_console[SERIAL_CONSOLE]!=2 || stop_console[BT_CONSOLE]!=2) vTaskDelay(1000 / portTICK_PERIOD_MS);
+    printf("\n Stopped all consoles\n");
+
+    return;
+
+    printf("\n Press any key to start console...\n");
     if(console_fd==-1) uart_flush_input(UART_NUM_0);
 	TimerHandle_t Timer3=xTimerCreate("Timer3",11000/portTICK_RATE_MS,pdFALSE,NULL,vTimerCallback);
     xTimerStart(Timer3,0);
