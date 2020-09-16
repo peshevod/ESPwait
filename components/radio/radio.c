@@ -6,8 +6,9 @@
 
 static const char* TAG = "Radio";
 extern uint8_t bypass_ldo;
-//extern volatile uint8_t irqf;
-//extern char val_buf[BUF_LEN];
+extern volatile uint8_t irqf;
+extern char val_buf[BUF_LEN];
+extern uint8_t cw, pn9;
 
 SRadioInit xRadioInit = {
    BASE_FREQUENCY,
@@ -37,6 +38,12 @@ SGpioInit xGpioIRQ={
    S2LP_GPIO_DIG_OUT_IRQ
 };
  
+SGpioInit xGpioTxState={
+   S2LP_GPIO_1,
+   S2LP_GPIO_MODE_DIGITAL_OUTPUT_LP,
+   S2LP_GPIO_DIG_OUT_TX_STATE
+};
+
 SAfcInit xSAfcInit={
     S_ENABLE,  /*!< AFC enable */
 //    S_DISABLE,  /*!< AFC disable */
@@ -50,6 +57,7 @@ SAfcInit xSAfcInit={
 void radio_init(uint8_t packetlen)
 {
     uint8_t tmp,tmp1;
+    uint32_t tmp32;
     
     get_value_from_nvs("F", 0, NULL, &xRadioInit.lFrequencyBase);
     get_value_from_nvs("M", 0, NULL, &xRadioInit.xModulationSelect);
@@ -66,32 +74,58 @@ void radio_init(uint8_t packetlen)
     ESP_LOGI(TAG,"ExitShutdown done");
     S2LPRadioSetXtalFrequency(XTAL_FREQ);
 
+    if(xRadioInit.xModulationSelect==0x70)
+    {
+    	cw=1;
+        ESP_LOGI(TAG,"Constant Wave selected");
+    }
+
+    get_value_from_nvs("E", 0, NULL, &tmp32);
+    xBasicInit.xPreambleLength=(uint16_t)tmp32;
+    if(xBasicInit.xPreambleLength==0)
+    {
+    	pn9=1;
+        ESP_LOGI(TAG,"PN9 source selected");
+    }
+
     /* S2LP IRQ config */
     S2LPGpioInit(&xGpioIRQ);
     ESP_LOGI(TAG,"GpioIRQ done");
     
     /* S2LP Radio config */
     S2LPRadioInit(&xRadioInit);
-    uint32_t tmp32;
     get_value_from_nvs("S", 0, NULL, &tmp32);
     S2LPRadioSetChannelSpace(tmp32);
     get_value_from_nvs("C", 0, NULL, &tmp);
     S2LPRadioSetChannel(tmp);
     
-    /* S2LP Packet config */
-    get_value_from_nvs("E", 0, NULL, &tmp32);
-    xBasicInit.xPreambleLength=(uint16_t)tmp32;
-    xBasicInit.xCrcMode=tmp;
-    S2LPPktBasicInit(&xBasicInit);
+    if(cw)
+    {
+        tmp=0x77;
+        S2LPSpiWriteRegisters(MOD2_ADDR, 1, &tmp);
+    }
+    if(pn9)
+    {
+        S2LPSpiReadRegisters(PCKTCTRL1_ADDR, 1, &tmp);
+        tmp|=TXSOURCE_REGMASK;
+        S2LPSpiWriteRegisters(PCKTCTRL1_ADDR, 1, &tmp);
+    }
+
+    if(!cw && !pn9)
+    {
+    	/* S2LP Packet config */
+    	xBasicInit.xCrcMode=tmp;
+    	S2LPPktBasicInit(&xBasicInit);
    
-    /* S2LP IRQs enable */
-    S2LPGpioIrqDeInit(NULL);
+    	/* S2LP IRQs enable */
+    	S2LPGpioIrqDeInit(NULL);
    
-    /* payload length config */
-    S2LPPktBasicSetPayloadLength(packetlen);
+    	/* payload length config */
+    	S2LPPktBasicSetPayloadLength(packetlen);
    
-    /* IRQ registers blanking */
-    S2LPGpioIrqClearStatus();
+    	/* IRQ registers blanking */
+    	S2LPGpioIrqClearStatus();
+    }
     
     S2LPSpiReadRegisters(0x78, 1, &tmp);
     get_value_from_nvs("L", 0, NULL, &tmp1);
@@ -121,24 +155,35 @@ void radio_tx_init(uint8_t packetlen)
     {
         S2LPRadioSetMaxPALevel(S_DISABLE);
         S2LPRadioSetPALeveldBm(7,power);
+        S2LPRadioSetPALeveldBm(6,(power+30)*7/8-30);
+        S2LPRadioSetPALeveldBm(5,(power+30)*6/8-30);
+        S2LPRadioSetPALeveldBm(4,(power+30)*5/8-30);
+        S2LPRadioSetPALeveldBm(3,(power+30)*4/8-30);
+        S2LPRadioSetPALeveldBm(2,(power+30)*3/8-30);
+        S2LPRadioSetPALeveldBm(1,(power+30)*2/8-30);
+        S2LPRadioSetPALeveldBm(0,(power+30)*1/8-30);
+        S2LPRadioSetManualRampingMode(S_ENABLE);
         S2LPRadioSetPALevelMaxIndex(7);
+        S2LPSpiReadRegisters(PA_POWER0_ADDR, 1, &tmp);
+        tmp&=0xE7;
+        tmp|=0x18;
+        g_xStatus = S2LPSpiWriteRegisters(PA_POWER0_ADDR, 1, &tmp);
     }
    
-    /* S2LP IRQs enable */
-    S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
+    if(!cw && !pn9)
+    {
+    	/* S2LP IRQs enable */
+    	S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
     
-    /* IRQ registers blanking */
-    S2LPGpioIrqClearStatus();
-//    irqf=0;
-  
+    	/* IRQ registers blanking */
+    	S2LPGpioIrqClearStatus();
+    };
+    irqf=0;
 };
 
 void radio_rx_init(uint8_t packetlen)
 {
     uint8_t tmp;
-//    OSCFRQ=0x06;
-//    SP1BRGL=0x40;
-//    SP1BRGH=0x03;
     radio_init(packetlen);
     
     S2LPSpiReadRegisters(PM_CONF0_ADDR, 1, &tmp);
@@ -157,9 +202,6 @@ void radio_rx_init(uint8_t packetlen)
     S2LPRadioRssiInit(&xSRssiInit);
     S2LPRadioAfcInit(&xSAfcInit);
     
-    /* RX timeout config */
-//    S2LPTimerSetRxTimerUs(7000000);
-//    SET_INFINITE_RX_TIMEOUT();
     /* use SLEEP_A mode (default) */
     S2LPTimerSleepB(S_DISABLE);
     S2LPTimerSetRxTimerUs(30000);
@@ -169,13 +211,11 @@ void radio_rx_init(uint8_t packetlen)
     S2LPTimerLdcrMode(S_ENABLE);
 
 
-//    S2LPGpioIrqConfig(IRQ_RX_DATA_DISC,S_ENABLE);
     S2LPGpioIrqConfig(IRQ_RX_DATA_READY,S_ENABLE);
-//    S2LPGpioIrqConfig(IRQ_WKUP_TOUT_LDC,S_ENABLE);
-//    S2LPGpioIrqConfig(IRQ_VALID_PREAMBLE,S_ENABLE);
 
     /* IRQ registers blanking */
     S2LPGpioIrqClearStatus();
+    irqf=0;
 }
 
 
