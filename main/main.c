@@ -12,7 +12,7 @@
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_event.h"
-#include "esp_event_loop.h"
+//#include "esp_event_loop.h"
 #include "esp_int_wdt.h"
 #include "esp_task_wdt.h"
 #include "nvs.h"
@@ -39,6 +39,9 @@
 #define SLEEP
 #define AWS_CLIENT_ID "721730703209"
 #define MAX_LENGTH_OF_UPDATE_JSON_BUFFER 512
+#define TEST_PERIOD 0x80
+#define VERSION     0x00
+
 
 //static QueueHandle_t uart2_queue;
 static uint8_t* data0;
@@ -57,7 +60,6 @@ static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
 static uint8_t ready_to_send=0;
-uint32_t uid;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
@@ -75,6 +77,12 @@ size_t sizeOfJsonDocumentBuffer = sizeof(JsonDocumentBuffer) / sizeof(JsonDocume
 
 RTC_SLOW_ATTR sn_table_t table;
 RTC_SLOW_ATTR uint32_t seq;
+RTC_SLOW_ATTR uint8_t rep;
+RTC_SLOW_ATTR uint32_t uid;
+RTC_SLOW_ATTR uint8_t cw, pn9;
+RTC_SLOW_ATTR tmode_t mode;
+RTC_SLOW_ATTR uint32_t next;
+RTC_SLOW_ATTR uint64_t trans_sleep;
 
 static int s_retry_num = 0;
 /* FreeRTOS event group to signal when we are connected*/
@@ -218,44 +226,6 @@ void test_gpio(void)
 			vTaskDelay(500 / portTICK_PERIOD_MS);
 		}
 	}
-
-}
-
-static void s2lp_wait(void *arg)
-{
-    int32_t t=600;
-    uint32_t xc=0;
-    s_wifi_event_group = xEventGroupCreate();
-    tcpip_adapter_init();
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
-    get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
-    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
-    while (1)
-    {
-    	if(s2lp_evt_queue==NULL)
-		{
-    		vTaskDelay(100/portTICK_PERIOD_MS);
-    		continue;
-		}
-    	if(xQueueReceive(s2lp_evt_queue,&mes,100/portTICK_PERIOD_MS))
-        {
-        	ESP_LOGI(TAG,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.seq_number,mes.serial_number,mes.data[0]);
-//        	send_to_cloud();
-        };
-        t--;
-        if(t<=0)
-        {
-        	ESP_LOGI(TAG,"i am alive 0x%08X\n",xc);
-        	t=600;
-        	xc++;
-        }
-    }
 
 }
 
@@ -666,31 +636,26 @@ static void s2lp_getdata()
 	input_data_t data_in;
 	S2LPTimerLdcIrqWa(S_ENABLE);
    	ESP_LOGI("s2lp_getdata","1");
-	S2LPGpioIrqGetStatus(&xIrqStatus);
-   	ESP_LOGI("s2lp_getdata","2");
-    if(xIrqStatus.RX_DATA_READY)
-    {
-        //Get the RX FIFO size
-        uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
-       	ESP_LOGI("s2lp_getdata","3");
-        //Read the RX FIFO
-        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
-       	ESP_LOGI("s2lp_getdata","4");
-        data_in.input_signal_power=S2LPRadioGetRssidBm();
-       	ESP_LOGI("s2lp_getdata","6, %d dbm",data_in.input_signal_power);
-        //Flush the RX FIFO
-        S2LPCmdStrobeFlushRxFifo();
-       	ESP_LOGI("s2lp_getdata","5");
-        xQueueSend(s2lp_evt_queue,&data_in,0);
-       	ESP_LOGI("s2lp_getdata","7");
-        S2LPCmdStrobeSleep();
-       	ESP_LOGI("s2lp_getdata","8");
-    }
+    //Get the RX FIFO size
+    uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+   	ESP_LOGI("s2lp_getdata","3");
+    //Read the RX FIFO
+    S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
+    ESP_LOGI("s2lp_getdata","4");
+    data_in.input_signal_power=S2LPRadioGetRssidBm();
+    ESP_LOGI("s2lp_getdata","6, %d dbm",data_in.input_signal_power);
+    //Flush the RX FIFO
+    S2LPCmdStrobeFlushRxFifo();
+    ESP_LOGI("s2lp_getdata","5");
+    xQueueSend(s2lp_evt_queue,&data_in,0);
+    ESP_LOGI("s2lp_getdata","7");
+    S2LPCmdStrobeSleep();
+    ESP_LOGI("s2lp_getdata","8");
     S2LPTimerLdcIrqWa(S_DISABLE);
    	ESP_LOGI("s2lp_getdata","9");
 }
 
-static void s2lp_wait1()
+static void s2lp_wait()
 {
     uint32_t dt=100;
     uint32_t x0=16000/dt;
@@ -776,49 +741,31 @@ static void config_isr0(void)
     ESP_LOGI(TAG,"handler added to isr service");
 }
 
-static void s2lp_rec_start(void *arg)
+static void s2lp_start()
 {
-
-	S2LPSpiInit();
-	S2LPExitShutdown();
-
 	start_s2lp_console();
+	ESP_LOGI("start1","UID=%08X",uid);
 
-//	test_gpio();
+    get_value_from_nvs("T", 0, NULL, &mode);
 
-    radio_rx_init(PACKETLEN);
-    ESP_LOGI(TAG,"radio_rx_init proceed");
-
-    config_isr0();
-
-	S2LPGpioIrqGetStatus(&xIrqStatus);
-
-    ESP_LOGI(TAG,"s2lp irq Status get");
-    S2LPCmdStrobeRx();
-    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
-    while(1) vTaskDelay(60000);
+    if(mode==RECEIVE_MODE) s2lp_rec_start();
+    if(mode==TRANSMIT_MODE)
+    {
+    	seq=0;
+    	rep=0;
+    	s2lp_trans_start();
+    }
 }
 
-static void s2lp_rec_start2(void *arg)
-{
-    ESP_LOGI("s2lp_rec_start2","before config_isr0 made");
-	config_isr0();
-    ESP_LOGI("s2lp_rec_start2","config_isr0 made");
-    while(1) vTaskDelay(60000);
-}
-
-static void s2lp_rec_start1()
+static void s2lp_rec_start()
 {
 
 	table.n_of_rows=0;
 	seq=0;
-	S2LPSpiInit();
-	S2LPEnterShutdown();
-	vTaskDelay(5/portTICK_PERIOD_MS);
-	S2LPExitShutdown();
 
-	start_s2lp_console();
-	ESP_LOGI("start1","UID=%08X",uid);
+	S2LPEnterShutdown();
+	S2LPExitShutdown();
+	S2LPSpiInit();
 
 	radio_rx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_rx_init proceed");
@@ -829,10 +776,85 @@ static void s2lp_rec_start1()
     S2LPCmdStrobeRx();
 };
 
-
-void to_sleep()
+static void s2lp_rec_start2(void *arg)
 {
-	esp_sleep_enable_timer_wakeup(60000000);
+    ESP_LOGI("s2lp_rec_start2","before config_isr0 made");
+	config_isr0();
+    ESP_LOGI("s2lp_rec_start2","config_isr0 made");
+    while(1) vTaskDelay(60000);
+}
+
+static void s2lp_trans_start()
+{
+	S2LPEnterShutdown();
+	S2LPExitShutdown();
+	S2LPSpiInit();
+
+	cw=0;
+	pn9=0;
+	radio_tx_init(PACKETLEN);
+	next=uid;
+    ESP_LOGI(TAG,"radio_tx_init proceed cw=%d pn9=%d",cw,pn9);
+
+    if(cw || pn9)
+    {
+        S2LPCmdStrobeTx();
+        ESP_LOGI(TAG,"CW or PN9 mode started");
+    }
+    else
+    {
+//    	config_isr0();
+    	s2lp_trans();
+        ESP_LOGI(TAG,"Transmit mode started");
+    }
+};
+
+static void s2lp_trans()
+{
+	uint8_t vectcTxBuff[PACKETLEN];
+    ((uint16_t*)vectcTxBuff)[0]=((uint16_t*)(&seq))[0];
+    seq++;
+    vectcTxBuff[2]=TEST_PERIOD | VERSION;
+    if(rep==0)
+    {
+    	get_value_from_nvs("X", 0, NULL, &rep);
+    	rep--;
+    	next=1664525*next+1013904223;
+    	trans_sleep=((next&0xFFFF0000)>>18)*1000;
+    	if(trans_sleep<1000000) trans_sleep=1000000;
+    }
+    else
+    {
+    	if(seq<90) trans_sleep=30000000;
+    	else
+    	{
+        	uint32_t t;
+    		get_value_from_nvs("I", 0, NULL, &t);
+    	   	trans_sleep=t*1000000;
+    	}
+    }
+    vectcTxBuff[3]=rep;
+    memcpy(&(vectcTxBuff[4]),&uid,4);
+    vectcTxBuff[8]=0;
+    vectcTxBuff[9]=0;
+    vectcTxBuff[10]=0;
+    vectcTxBuff[11]=0;
+    S2LPCmdStrobeFlushTxFifo();
+    S2LPSpiWriteFifo(PACKETLEN, vectcTxBuff);
+    S2LPGpioIrqGetStatus(&xIrqStatus);
+    S2LPCmdStrobeTx();
+
+    while(1)
+    {
+        S2LPRefreshStatus();
+        ESP_LOGI("s2lp_trans","state=0x%0X",g_xStatus.MC_STATE);
+        vTaskDelay(50/portTICK_PERIOD_MS);
+    }
+ }
+
+void to_sleep(uint32_t timeout)
+{
+	esp_sleep_enable_timer_wakeup(timeout);
 	esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
@@ -844,12 +866,9 @@ void to_sleep()
 
 void app_main(void)
 {
-//    CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
-//    CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
-//    CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
 	init_uart0();
 	initialize_nvs();
-#ifdef SLEEP
+	uint64_t sleep_time=30000000;
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
         	ESP_LOGI("app_main","Wakeup!!! inerrupt num_of_rows=%d",table.n_of_rows);
@@ -857,35 +876,56 @@ void app_main(void)
 //        	ESP_LOGI("app_main","Wakeup!!! disabled hold sdn");
 			S2LPSpiInit();
 //        	ESP_LOGI("app_main","Wakeup!!! spi initiated");
-			s2lp_wait1();
+			S2LPGpioIrqGetStatus(&xIrqStatus);
+		   	ESP_LOGI("app_main","irq=0x%X",((uint32_t*)(&xIrqStatus))[0]);
+		    if(xIrqStatus.RX_DATA_READY)
+		    {
+		    	if(mode==RECEIVE_MODE)
+		    	{
+		    		ESP_LOGI("app_main","RECIEVE MODE");
+		    		s2lp_wait();
+		    		sleep_time=60000000;
+		    	}
+		    }
+		    if(xIrqStatus.TX_DATA_SENT)
+		    {
+		    	if(mode==TRANSMIT_MODE)
+		    	{
+		    		ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
+		    		S2LPEnterShutdown();
+		    		sleep_time=trans_sleep;
+		    	}
+		    }
         	break;
         }
         case ESP_SLEEP_WAKEUP_TIMER: {
-        	ESP_LOGI("app_main","I am alive");
+	       	ESP_LOGI("app_main","Wake Up by timer");
+        	if(mode==TRANSMIT_MODE)
+        	{
+        		if(cw || pn9)
+        		{
+        			if(cw) ESP_LOGI("TRANSMIT MODE ", "CW mode %d",seq);
+        			if(pn9) ESP_LOGI("TRANSMIT MODE ", "PN9 mode %d",seq);
+        			seq++;
+    		    	sleep_time=60000000;
+        		}
+        		else
+        		{
+        			s2lp_trans_start();
+        			sleep_time=trans_sleep;
+        		}
+        	} else ESP_LOGI("app_main","I am alive");
             break;
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
         	ESP_LOGI("app_main","Reset!!!");
-        	s2lp_rec_start1();
+        	s2lp_start();
     }
 	ESP_LOGI("app_main","Going to sleep...");
-	to_sleep();
-#endif
-//    ESP_ERROR_CHECK(esp_event_loop_create_default());
-//    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
-//	uart2_queue=xQueueCreate(MAX_MESSAGES_IN_QUEUE, MAX_MESSAGE_SIZE);
-//	con=0;
-//	xTaskCreate(uart_rec_task, "uart_rec_task", 2048, NULL, 10, NULL);
-//    xTaskCreate(queue_watch_task, "queue_watch_task", 4096, NULL, 10, NULL);
-	//    xTaskCreate(send_to_cloud_task, "send_to_cloud_task", 4096, NULL, 10, NULL);
-//	start_x_shell();
-#ifndef SLEEP
-    xTaskCreatePinnedToCore(s2lp_rec_start, "s2lp_rec_start", 8192, NULL, 10, NULL,0);
-    xTaskCreatePinnedToCore(s2lp_wait, "s2lp_wait", 8192, NULL, 10, NULL,0);
-#endif
+	to_sleep(sleep_time);
     while(1)
     {
-
+//		vTaskDelay(10000/portTICK_PERIOD_MS);
     }
 }

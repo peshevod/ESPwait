@@ -9,7 +9,7 @@ W,data,u32,50000
 D,data,u32,12500
 S,data,u32,50000
 P,data,i32,16
-T,data,u8,0
+T,data,u8,1
 L,data,u8,1
 C,data,i32,21
 E,data,u32,64

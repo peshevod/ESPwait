@@ -1,7 +1,7 @@
 /*
  * main.h
  *
- *  Created on: 6 нояб. 2019 г.
+ *  Created on: 6 пїЅпїЅпїЅпїЅ. 2019 пїЅ.
  *      Author: ilya
  */
 #ifndef MAIN_MAIN_H_
@@ -64,12 +64,13 @@ void send_to_cloud(void);
 //static void queue_watch_task(void *arg);
 static void event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static void IRAM_ATTR s2lp_intr_handler(void* arg);
-static void s2lp_wait(void *arg);
 static void config_isr0(void);
-static void s2lp_wait1(void);
+static void s2lp_wait(void);
+static void s2lp_trans(void);
 void test_gpio(void);
+static void s2lp_rec_start(void);
 static void s2lp_rec_start2(void *arg);
-
+static void s2lp_trans_start(void);
 void init_bt_gattc(void);
 void init_bt_gatts(void);
 

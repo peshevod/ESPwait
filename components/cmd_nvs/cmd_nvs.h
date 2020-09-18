@@ -21,6 +21,12 @@ typedef struct param
     char desc[200];
 } _param;
 
+typedef enum
+{
+	RECEIVE_MODE = 0x00,
+	TRANSMIT_MODE = 0x01
+} tmode_t;
+
 // Register NVS functions
 void register_nvs();
 void get_uid(uint32_t* uid);

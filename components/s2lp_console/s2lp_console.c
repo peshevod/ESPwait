@@ -32,6 +32,7 @@ extern int volatile console_fd;
 char x[128];
 extern char server_name[40];
 extern uint8_t stop_console[2];
+extern RTC_SLOW_ATTR uint32_t uid;
 
 static void initialize_console()
 {
@@ -81,13 +82,12 @@ static void vTimerCallback( TimerHandle_t pxTimer )
 
 void bt_console()
 {
-    uint32_t uid;
-    get_uid(&uid);
     sprintf(server_name,"ESPWAIT-%08X",uid);
     init_spp_server();
     int k=120;
     while(--k>0 && console_fd==-1)
     {
+    	if(stop_console[BT_CONSOLE]) break;
     	vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
     if(console_fd!=-1)
@@ -103,13 +103,6 @@ void bt_console()
 
 void serial_console()
 {
-    uint32_t uid;
-    get_uid(&uid);
-//	esp_vfs_dev_uart_register();
-//	esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
-//	esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
-//	esp_vfs_dev_uart_use_driver(UART_NUM_0);
-//	esp_vfs_dev_uart_use_nonblocking(UART_NUM_0);
    	start_x_shell(SERIAL_CONSOLE);
     ESP_LOGI("serial_console","SERIAL CONSOLE stopped\n");
     stop_console[SERIAL_CONSOLE]=2;
@@ -119,6 +112,7 @@ void serial_console()
 void start_s2lp_console()
 {
     size_t len;
+    get_uid(&uid);
     stop_console[SERIAL_CONSOLE]=0;
     stop_console[BT_CONSOLE]=0;
     uart_flush_input(UART_NUM_0);

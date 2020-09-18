@@ -7,8 +7,7 @@
 static const char* TAG = "Radio";
 extern uint8_t bypass_ldo;
 extern volatile uint8_t irqf;
-extern char val_buf[BUF_LEN];
-extern uint8_t cw, pn9;
+extern RTC_SLOW_ATTR uint8_t cw, pn9;
 
 SRadioInit xRadioInit = {
    BASE_FREQUENCY,
@@ -67,11 +66,6 @@ void radio_init(uint8_t packetlen)
 
     ESP_LOGI(TAG,"nvs FMRWD done");
 
-    /* S2LP ON */
-    S2LPEnterShutdown();
-    S2LPExitShutdown();
-    
-    ESP_LOGI(TAG,"ExitShutdown done");
     S2LPRadioSetXtalFrequency(XTAL_FREQ);
 
     if(xRadioInit.xModulationSelect==0x70)
@@ -178,7 +172,6 @@ void radio_tx_init(uint8_t packetlen)
     	/* IRQ registers blanking */
     	S2LPGpioIrqClearStatus();
     };
-    irqf=0;
 };
 
 void radio_rx_init(uint8_t packetlen)
@@ -215,7 +208,6 @@ void radio_rx_init(uint8_t packetlen)
 
     /* IRQ registers blanking */
     S2LPGpioIrqClearStatus();
-    irqf=0;
 }
 
 

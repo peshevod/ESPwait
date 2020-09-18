@@ -68,13 +68,13 @@ void SdkSpiDeinit()
 void S2LPEnterShutdown(void)
 {
 	gpio_set_level(PIN_NUM_SDN, 1);
-	vTaskDelay(50 / portTICK_PERIOD_MS);
+	vTaskDelay(5 / portTICK_PERIOD_MS);
 }
 
 void S2LPExitShutdown(void)
 {
 	gpio_set_level(PIN_NUM_SDN, 0);
-	vTaskDelay(50 / portTICK_PERIOD_MS);
+	vTaskDelay(5 / portTICK_PERIOD_MS);
 }
 
 
