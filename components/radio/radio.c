@@ -108,6 +108,7 @@ void radio_init(uint8_t packetlen)
     if(!cw && !pn9)
     {
     	/* S2LP Packet config */
+        get_value_from_nvs("G", 0, NULL, &tmp);
     	xBasicInit.xCrcMode=tmp;
     	S2LPPktBasicInit(&xBasicInit);
    
@@ -167,7 +168,7 @@ void radio_tx_init(uint8_t packetlen)
     if(!cw && !pn9)
     {
     	/* S2LP IRQs enable */
-    	S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
+//    	S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
     
     	/* IRQ registers blanking */
     	S2LPGpioIrqClearStatus();

@@ -844,12 +844,19 @@ static void s2lp_trans()
     S2LPGpioIrqGetStatus(&xIrqStatus);
     S2LPCmdStrobeTx();
 
-    while(1)
+/*    while(1)
     {
         S2LPRefreshStatus();
         ESP_LOGI("s2lp_trans","state=0x%0X",g_xStatus.MC_STATE);
+        uint16_t pl=S2LPGetPreambleLength();
+        ESP_LOGI("s2lp_trans","preamble_length=%d",pl);
+        uint16_t l=S2LPPktBasicGetPayloadLength();
+        ESP_LOGI("s2lp_trans","packet_length=%d",l);
+        uint8_t reg;
+        S2LPSpiReadRegisters(PCKTCTRL1_ADDR, 1, &reg);
+        ESP_LOGI("s2lp_trans","source=0x%0X",reg&TXSOURCE_REGMASK);
         vTaskDelay(50/portTICK_PERIOD_MS);
-    }
+    }*/
  }
 
 void to_sleep(uint32_t timeout)
@@ -861,11 +868,17 @@ void to_sleep(uint32_t timeout)
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
 	rtc_gpio_isolate(GPIO_INPUT_IO_0);
 	rtc_gpio_hold_en(PIN_NUM_SDN);
+	esp_set_deep_sleep_wake_stub(NULL);
 	esp_deep_sleep_start();
 }
 
 void app_main(void)
 {
+//	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
+//	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
+//	CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
+	vTaskDelay(500/portTICK_PERIOD_MS);
+
 	init_uart0();
 	initialize_nvs();
 	uint64_t sleep_time=30000000;
