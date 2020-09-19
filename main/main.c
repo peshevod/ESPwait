@@ -15,6 +15,8 @@
 //#include "esp_event_loop.h"
 #include "esp_int_wdt.h"
 #include "esp_task_wdt.h"
+#include "esp_bt.h"
+//#include "esp_bt_main.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
@@ -861,6 +863,9 @@ static void s2lp_trans()
 
 void to_sleep(uint32_t timeout)
 {
+//	esp_bluedroid_disable();
+	esp_bt_controller_disable();
+	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
 	esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
 	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
@@ -877,10 +882,10 @@ void app_main(void)
 //	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
 //	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
 //	CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
-	vTaskDelay(500/portTICK_PERIOD_MS);
+//	vTaskDelay(500/portTICK_PERIOD_MS);
 
 	init_uart0();
-	initialize_nvs();
+//	initialize_nvs();
 	uint64_t sleep_time=30000000;
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
@@ -896,6 +901,7 @@ void app_main(void)
 		    	if(mode==RECEIVE_MODE)
 		    	{
 		    		ESP_LOGI("app_main","RECIEVE MODE");
+		    		initialize_nvs();
 		    		s2lp_wait();
 		    		sleep_time=60000000;
 		    	}
@@ -924,6 +930,7 @@ void app_main(void)
         		}
         		else
         		{
+        			initialize_nvs();
         			s2lp_trans_start();
         			sleep_time=trans_sleep;
         		}
@@ -932,6 +939,7 @@ void app_main(void)
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
+        	initialize_nvs();
         	ESP_LOGI("app_main","Reset!!!");
         	s2lp_start();
     }
