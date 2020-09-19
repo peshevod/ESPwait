@@ -33,7 +33,7 @@ PktBasicInit xBasicInit={
  
 SGpioInit xGpioIRQ={
    S2LP_GPIO_0,
-   S2LP_GPIO_MODE_DIGITAL_OUTPUT_LP,
+   S2LP_GPIO_MODE_DIGITAL_OUTPUT_HP,
    S2LP_GPIO_DIG_OUT_IRQ
 };
  
@@ -168,7 +168,7 @@ void radio_tx_init(uint8_t packetlen)
     if(!cw && !pn9)
     {
     	/* S2LP IRQs enable */
-//    	S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
+    	S2LPGpioIrqConfig(IRQ_TX_DATA_SENT , S_ENABLE);
     
     	/* IRQ registers blanking */
     	S2LPGpioIrqClearStatus();
