@@ -754,7 +754,7 @@ static void s2lp_start()
     if(mode==TRANSMIT_MODE)
     {
     	seq=0;
-    	rep=0;
+    	get_value_from_nvs("X", 0, NULL, &rep);
     	s2lp_trans_start();
     }
 }
@@ -786,6 +786,8 @@ static void s2lp_rec_start2(void *arg)
     while(1) vTaskDelay(60000);
 }
 
+uint8_t only_timer_wakeup=0;
+
 static void s2lp_trans_start()
 {
 //	S2LPSpiInit();
@@ -798,7 +800,8 @@ static void s2lp_trans_start()
 
     if(cw || pn9)
     {
-        S2LPCmdStrobeTx();
+    	only_timer_wakeup=1;
+    	S2LPCmdStrobeTx();
         ESP_LOGI(TAG,"CW or PN9 mode started");
     }
     else
@@ -813,17 +816,15 @@ static void s2lp_trans()
 {
 	uint8_t vectcTxBuff[PACKETLEN];
     ((uint16_t*)vectcTxBuff)[0]=((uint16_t*)(&seq))[0];
-    seq++;
     vectcTxBuff[2]=TEST_PERIOD | VERSION;
-    if(rep==0)
+    rep--;
+    if(rep==0xFF)
     {
     	get_value_from_nvs("X", 0, NULL, &rep);
     	rep--;
-    	next=1664525*next+1013904223;
-    	trans_sleep=((next&0xFFFF0000)>>18)*1000;
-    	if(trans_sleep<1000000) trans_sleep=1000000;
+    	seq++;
     }
-    else
+    if(rep==0)
     {
     	if(seq<90) trans_sleep=30000000;
     	else
@@ -833,6 +834,12 @@ static void s2lp_trans()
     	   	trans_sleep=t*1000000;
     	}
     }
+    else
+    {
+    	next=1664525*next+1013904223;
+    	trans_sleep=((next&0xFFFF0000)>>18)*1000;
+    	if(trans_sleep<1000000) trans_sleep=1000000;
+    }
     vectcTxBuff[3]=rep;
     memcpy(&(vectcTxBuff[4]),&uid,4);
     vectcTxBuff[8]=0;
@@ -841,8 +848,13 @@ static void s2lp_trans()
     vectcTxBuff[11]=0;
     S2LPCmdStrobeFlushTxFifo();
     S2LPSpiWriteFifo(PACKETLEN, vectcTxBuff);
-    S2LPGpioIrqGetStatus(&xIrqStatus);
+//    S2LPGpioIrqGetStatus(&xIrqStatus);
+    S2LPRefreshStatus();
+    ESP_LOGI("s2lp_trans","before state=0x%0X",g_xStatus.MC_STATE);
     S2LPCmdStrobeTx();
+    ESP_LOGI("s2lp_trans","Command tx sent seq=%d rep=%d",seq,rep);
+    S2LPRefreshStatus();
+    ESP_LOGI("s2lp_trans","after state=0x%0X",g_xStatus.MC_STATE);
 
 /*    while(1)
     {
@@ -859,22 +871,23 @@ static void s2lp_trans()
     }*/
  }
 
+
 void to_sleep(uint32_t timeout)
 {
 //	esp_bluedroid_disable();
 	esp_bt_controller_disable();
 	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
-	esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ANY_HIGH);
-	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
-	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
+	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
+//	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+//	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
 	rtc_gpio_isolate(GPIO_INPUT_IO_0);
 	rtc_gpio_hold_en(PIN_NUM_SDN);
 //		CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
 //		CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
 //		CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
-	esp_set_deep_sleep_wake_stub(NULL);
+//	esp_set_deep_sleep_wake_stub(NULL);
 	esp_deep_sleep_start();
 }
 
@@ -889,10 +902,11 @@ void app_main(void)
 	initialize_nvs();
 	S2LPSpiInit();
 	uint64_t sleep_time=30000000;
-//	rtc_gpio_hold_dis(PIN_NUM_SDN);
+	rtc_gpio_hold_dis(PIN_NUM_SDN);
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
-        	ESP_LOGI("app_main","Wakeup!!! inerrupt num_of_rows=%d",table.n_of_rows);
+        	uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();
+        	ESP_LOGI("app_main","Wakeup!!! inerrupt num_of_rows=%d pins=0x%016llX",table.n_of_rows,wakeup_pin_mask);
 //			rtc_gpio_hold_dis(PIN_NUM_SDN);
 //        	ESP_LOGI("app_main","Wakeup!!! disabled hold sdn");
 //        	ESP_LOGI("app_main","Wakeup!!! spi initiated");
@@ -908,14 +922,20 @@ void app_main(void)
 		    		sleep_time=60000000;
 		    	}
 		    }
-		    if(xIrqStatus.TX_DATA_SENT)
+		    else if(xIrqStatus.TX_DATA_SENT)
 		    {
 		    	if(mode==TRANSMIT_MODE)
 		    	{
 		    		ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
 //		    		S2LPCmdStrobeStandby();
 		    		sleep_time=trans_sleep;
+		    		only_timer_wakeup=1;
 		    	}
+		    }
+		    else
+		    {
+//	    		only_timer_wakeup=1;
+	    		sleep_time=trans_sleep;
 		    }
         	break;
         }
@@ -929,12 +949,14 @@ void app_main(void)
         			if(pn9) ESP_LOGI("TRANSMIT MODE ", "PN9 mode %d",seq);
         			seq++;
     		    	sleep_time=60000000;
+		    		only_timer_wakeup=1;
         		}
         		else
         		{
 //        			S2LPCmdStrobeReady();
-//					vTaskDelay(1);
-        			s2lp_trans_start();
+//					vTaskDelay(10);
+        			s2lp_trans();
+        			only_timer_wakeup=0;
         			sleep_time=trans_sleep;
         		}
         	} else ESP_LOGI("app_main","I am alive");
@@ -942,7 +964,7 @@ void app_main(void)
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
         default:
-        	ESP_LOGI("app_main","Reset!!!");
+        	ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
         	S2LPEnterShutdown();
         	S2LPExitShutdown();
 //        	gpio_set_direction(GPIO_NUM_4, GPIO_MODE_DEF_INPUT);

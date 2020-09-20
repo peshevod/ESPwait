@@ -33,13 +33,13 @@ PktBasicInit xBasicInit={
  
 SGpioInit xGpioIRQ={
    S2LP_GPIO_0,
-   S2LP_GPIO_MODE_DIGITAL_OUTPUT_HP,
+   S2LP_GPIO_MODE_DIGITAL_OUTPUT_LP,
    S2LP_GPIO_DIG_OUT_IRQ
 };
  
 SGpioInit xGpioTxState={
    S2LP_GPIO_1,
-   S2LP_GPIO_MODE_DIGITAL_OUTPUT_LP,
+   S2LP_GPIO_MODE_DIGITAL_OUTPUT_HP,
    S2LP_GPIO_DIG_OUT_TX_STATE
 };
 
@@ -86,6 +86,10 @@ void radio_init(uint8_t packetlen)
     S2LPGpioInit(&xGpioIRQ);
     ESP_LOGI(TAG,"GpioIRQ done");
     
+    /* TX state output on gpio1 */
+    S2LPGpioInit(&xGpioTxState);
+    ESP_LOGI(TAG,"TX state on gpio1 done");
+
     /* S2LP Radio config */
     S2LPRadioInit(&xRadioInit);
     get_value_from_nvs("S", 0, NULL, &tmp32);
