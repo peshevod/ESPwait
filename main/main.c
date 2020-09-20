@@ -155,7 +155,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAGW, "got ip:%s",
-                 ip4addr_ntoa(&event->ip_info.ip));
+        		ip4addr_ntoa((const ip4_addr_t*)(&(event->ip_info.ip))));
         ifindex=event->if_index;
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -244,7 +244,7 @@ static void wifi_handlers()
 static void wifi_prepare()
 {
 	wifi_handlers();
-    tcpip_adapter_init();
+    esp_netif_init();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
     get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
@@ -750,10 +750,10 @@ static void s2lp_start()
 
     get_value_from_nvs("T", 0, NULL, &mode);
 
+    seq=0;
     if(mode==RECEIVE_MODE) s2lp_rec_start();
     if(mode==TRANSMIT_MODE)
     {
-    	seq=0;
     	get_value_from_nvs("X", 0, NULL, &rep);
     	next=uid;
     	s2lp_trans_start();
@@ -764,11 +764,6 @@ static void s2lp_rec_start()
 {
 
 	table.n_of_rows=0;
-	seq=0;
-
-//	S2LPEnterShutdown();
-//	S2LPExitShutdown();
-//	S2LPSpiInit();
 
 	radio_rx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_rx_init proceed");
@@ -791,8 +786,6 @@ uint8_t only_timer_wakeup=0;
 
 static void s2lp_trans_start()
 {
-//	S2LPSpiInit();
-
 	cw=0;
 	pn9=0;
 	radio_tx_init(PACKETLEN);
@@ -806,7 +799,6 @@ static void s2lp_trans_start()
     }
     else
     {
-//    	config_isr0();
     	s2lp_trans();
         ESP_LOGI(TAG,"Transmit mode started");
     }
@@ -848,33 +840,17 @@ static void s2lp_trans()
     vectcTxBuff[11]=0;
     S2LPCmdStrobeFlushTxFifo();
     S2LPSpiWriteFifo(PACKETLEN, vectcTxBuff);
-//    S2LPGpioIrqGetStatus(&xIrqStatus);
     S2LPRefreshStatus();
-    ESP_LOGI("s2lp_trans","before state=0x%0X",g_xStatus.MC_STATE);
     S2LPCmdStrobeTx();
-    ESP_LOGI("s2lp_trans","Command tx sent seq=%d rep=%d",seq,rep);
+    vTaskDelay(1);
     S2LPRefreshStatus();
-    ESP_LOGI("s2lp_trans","after state=0x%0X",g_xStatus.MC_STATE);
-
-/*    while(1)
-    {
-        S2LPRefreshStatus();
-        ESP_LOGI("s2lp_trans","state=0x%0X",g_xStatus.MC_STATE);
-        uint16_t pl=S2LPGetPreambleLength();
-        ESP_LOGI("s2lp_trans","preamble_length=%d",pl);
-        uint16_t l=S2LPPktBasicGetPayloadLength();
-        ESP_LOGI("s2lp_trans","packet_length=%d",l);
-        uint8_t reg;
-        S2LPSpiReadRegisters(PCKTCTRL1_ADDR, 1, &reg);
-        ESP_LOGI("s2lp_trans","source=0x%0X",reg&TXSOURCE_REGMASK);
-        vTaskDelay(50/portTICK_PERIOD_MS);
-    }*/
+    if(g_xStatus.MC_STATE== MC_STATE_TX) ESP_LOGI("s2lp_trans","Command tx successfully sent for seq=%d rep=%d",seq,rep);
+    else ESP_LOGE("s2lp_trans","Command tx failed");
  }
 
 
 void to_sleep(uint32_t timeout)
 {
-//	esp_bluedroid_disable();
 	esp_bt_controller_disable();
 	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
@@ -884,20 +860,11 @@ void to_sleep(uint32_t timeout)
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
 	rtc_gpio_isolate(GPIO_INPUT_IO_0);
 	rtc_gpio_hold_en(PIN_NUM_SDN);
-//		CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
-//		CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
-//		CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
-//	esp_set_deep_sleep_wake_stub(NULL);
 	esp_deep_sleep_start();
 }
 
 void app_main(void)
 {
-//	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_DBROWN_OUT_THRES_M);
-//	CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG,RTC_CNTL_BROWN_OUT_RST_ENA_M);
-//	CLEAR_PERI_REG_MASK(RTC_CNTL_INT_ENA_REG,RTC_CNTL_BROWN_OUT_INT_ENA_M);
-//	vTaskDelay(500/portTICK_PERIOD_MS);
-
 	init_uart0();
 	initialize_nvs();
 	S2LPSpiInit();
@@ -905,13 +872,8 @@ void app_main(void)
 	rtc_gpio_hold_dis(PIN_NUM_SDN);
 	switch (esp_sleep_get_wakeup_cause()) {
         case ESP_SLEEP_WAKEUP_EXT1: {
-        	uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();
-        	ESP_LOGI("app_main","Wakeup!!! inerrupt num_of_rows=%d pins=0x%016llX",table.n_of_rows,wakeup_pin_mask);
-//			rtc_gpio_hold_dis(PIN_NUM_SDN);
-//        	ESP_LOGI("app_main","Wakeup!!! disabled hold sdn");
-//        	ESP_LOGI("app_main","Wakeup!!! spi initiated");
+        	ESP_LOGI("app_main","Wakeup!!! interrupt num_of_rows=%d",table.n_of_rows);
 			S2LPGpioIrqGetStatus(&xIrqStatus);
-//	    	S2LPGpioIrqClearStatus();
 		   	ESP_LOGI("app_main","irq=0x%08X",((uint32_t*)(&xIrqStatus))[0]);
 		    if(xIrqStatus.RX_DATA_READY)
 		    {
@@ -927,8 +889,6 @@ void app_main(void)
 		    	if(mode==TRANSMIT_MODE)
 		    	{
 		    		ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
-//		    		S2LPCmdStrobeStandby();
-//		    		S2LPCmdStrobeSleep();
 		        	S2LPEnterShutdown();
 		    		sleep_time=trans_sleep;
 		    		only_timer_wakeup=1;
@@ -936,7 +896,6 @@ void app_main(void)
 		    }
 		    else
 		    {
-//	    		only_timer_wakeup=1;
 	    		sleep_time=trans_sleep;
 		    }
         	break;
@@ -955,18 +914,17 @@ void app_main(void)
         		}
         		else
         		{
-//        			S2LPCmdStrobeReady();
-//					vTaskDelay(10);
-//					uint32_t f=S2LPRadioGetFrequencyBase();
-//					uint32_t d=S2LPRadioGetDatarate();
-//					ESP_LOGI("TRANSMIT MODE","Frequency Base=%d Data Rate=%d",f,d);
-//		        	S2LPEnterShutdown();
 		        	S2LPExitShutdown();
         			s2lp_trans_start();
         			only_timer_wakeup=0;
         			sleep_time=trans_sleep;
         		}
-        	} else ESP_LOGI("app_main","I am alive");
+        	}
+        	else
+        	{
+        		seq++;
+        		ESP_LOGI("app_main","I am alive %d",seq);
+        	}
             break;
         }
         case ESP_SLEEP_WAKEUP_UNDEFINED:
@@ -974,15 +932,12 @@ void app_main(void)
         	ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
         	S2LPEnterShutdown();
         	S2LPExitShutdown();
-//        	gpio_set_direction(GPIO_NUM_4, GPIO_MODE_DEF_INPUT);
-//        	gpio_pulldown_en(GPIO_NUM_4);
-//        	gpio_pullup_dis(GPIO_NUM_4);
         	s2lp_start();
     }
 	ESP_LOGI("app_main","Going to sleep...");
 	to_sleep(sleep_time);
     while(1)
     {
-//		vTaskDelay(10000/portTICK_PERIOD_MS);
+		vTaskDelay(1);
     }
 }
