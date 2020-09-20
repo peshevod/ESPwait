@@ -755,6 +755,7 @@ static void s2lp_start()
     {
     	seq=0;
     	get_value_from_nvs("X", 0, NULL, &rep);
+    	next=uid;
     	s2lp_trans_start();
     }
 }
@@ -795,7 +796,6 @@ static void s2lp_trans_start()
 	cw=0;
 	pn9=0;
 	radio_tx_init(PACKETLEN);
-	next=uid;
     ESP_LOGI(TAG,"radio_tx_init proceed cw=%d pn9=%d",cw,pn9);
 
     if(cw || pn9)
@@ -928,6 +928,8 @@ void app_main(void)
 		    	{
 		    		ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
 //		    		S2LPCmdStrobeStandby();
+//		    		S2LPCmdStrobeSleep();
+		        	S2LPEnterShutdown();
 		    		sleep_time=trans_sleep;
 		    		only_timer_wakeup=1;
 		    	}
@@ -955,7 +957,12 @@ void app_main(void)
         		{
 //        			S2LPCmdStrobeReady();
 //					vTaskDelay(10);
-        			s2lp_trans();
+//					uint32_t f=S2LPRadioGetFrequencyBase();
+//					uint32_t d=S2LPRadioGetDatarate();
+//					ESP_LOGI("TRANSMIT MODE","Frequency Base=%d Data Rate=%d",f,d);
+//		        	S2LPEnterShutdown();
+		        	S2LPExitShutdown();
+        			s2lp_trans_start();
         			only_timer_wakeup=0;
         			sleep_time=trans_sleep;
         		}
