@@ -352,7 +352,8 @@ void init_certs(void)
 	get_certs();
 }
 
-
+char ShadowName[16];
+char* pShadowName;
 
 void send_to_cloud1(bool shadow)
 {
@@ -385,6 +386,8 @@ void send_to_cloud1(bool shadow)
         modsn_h.pData = &(data.serial_number);
         modsn_h.type = SHADOW_JSON_UINT32;
         modsn_h.dataLength = sizeof(uint32_t);
+        sprintf(ShadowName,"%08x",data.serial_number);
+        pShadowName=ShadowName;
 
         mod_jp4_h.cb = NULL;
         mod_jp4_h.pKey = "MOD_JP4";
@@ -500,8 +503,8 @@ void send_to_cloud1(bool shadow)
     	else
     	{
     		scp = ShadowConnectParametersDefault;
-    		//    		sprintf(ThingName,"espwait-%08x",uid);
-    		sprintf(ThingName,"GW1");
+    		sprintf(ThingName,"espwait-%08x",uid);
+//    		sprintf(ThingName,"GW1");
     		scp.pMyThingName=ThingName;
     	    scp.pMqttClientId = "721730703209";
     	    scp.mqttClientIdLen = (uint16_t) strlen("721730703209");
