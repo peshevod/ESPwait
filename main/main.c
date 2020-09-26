@@ -72,7 +72,7 @@ extern const uint8_t private_pem_key_end[] asm("_binary_private_pem_key_end");
 /**
  * @brief Default MQTT HOST URL is pulled from the aws_iot_config.h
  */
-char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-east-2.amazonaws.com";
+char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-west-2.amazonaws.com";
 
 char JsonDocumentBuffer[MAX_LENGTH_OF_UPDATE_JSON_BUFFER];
 size_t sizeOfJsonDocumentBuffer = sizeof(JsonDocumentBuffer) / sizeof(JsonDocumentBuffer[0]);
@@ -349,7 +349,7 @@ extern char* pKey;
 
 void init_certs(void)
 {
-
+	get_certs();
 }
 
 
@@ -500,7 +500,8 @@ void send_to_cloud1(bool shadow)
     	else
     	{
     		scp = ShadowConnectParametersDefault;
-    		sprintf(ThingName,"espwait-%08x",uid);
+    		//    		sprintf(ThingName,"espwait-%08x",uid);
+    		sprintf(ThingName,"GW1");
     		scp.pMyThingName=ThingName;
     	    scp.pMqttClientId = "721730703209";
     	    scp.mqttClientIdLen = (uint16_t) strlen("721730703209");
