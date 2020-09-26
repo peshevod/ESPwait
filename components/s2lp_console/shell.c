@@ -364,6 +364,17 @@ void EUSART1_list(console_type con)
 	} while(rc==1);
 }
 
+void EUSART1_help(console_type con)
+{
+	send_chars(con, "H - print this help\n");
+	send_chars(con, "L(x) - print all parameters\n");
+	send_chars(con, "D(x) <p> - print parameter <p>\n");
+	send_chars(con, "S <p>=<v> - set parameter <p> to <v>");
+	send_chars(con, "G KEY - upload private key\n");
+	send_chars(con, "G CERT - upload thing certificate\n");
+	send_chars(con, "G ROOT - upload root certificate\n");
+}
+
 
 uint8_t proceed(console_type con) {
     uint8_t i = 0, cmd, j;
@@ -387,6 +398,10 @@ uint8_t proceed(console_type con) {
     if (cmd == 'L' && z[con].c_buf[i] == 0) {
 //        print_pars();
     	EUSART1_list(con);
+        return 1;
+    }
+    if (cmd == 'H' && z[con].c_buf[i] == 0) {
+    	EUSART1_help(con);
         return 1;
     }
     while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
