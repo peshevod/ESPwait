@@ -245,6 +245,7 @@ static void wifi_prepare()
 {
 	wifi_handlers();
     esp_netif_init();
+    esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
     get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
