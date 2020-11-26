@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -35,6 +36,7 @@
 #include "aws_iot_mqtt_client_interface.h"
 #include "aws_iot_shadow_interface.h"
 #include "spp_server.h"
+#include "esp_sntp.h"
 //#include "bt/host/bluedroid/api/include/api/esp_bt_main.h"
 //#include "soc/rtc.h"
 
@@ -62,6 +64,7 @@ static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
 static uint8_t ready_to_send=0;
+static uint8_t wifi_stopped;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
@@ -85,6 +88,7 @@ RTC_SLOW_ATTR uint8_t cw, pn9;
 RTC_SLOW_ATTR tmode_t mode;
 RTC_SLOW_ATTR uint32_t next;
 RTC_SLOW_ATTR uint64_t trans_sleep;
+RTC_SLOW_ATTR uint32_t time0;
 
 static int s_retry_num = 0;
 /* FreeRTOS event group to signal when we are connected*/
@@ -93,6 +97,8 @@ static EventGroupHandle_t s_wifi_event_group;
 /* The event group allows multiple bits for each event, but we only care about one event
  * - are we connected to the AP with an IP? */
 const int WIFI_CONNECTED_BIT = BIT0;
+
+esp_netif_t* wifi_interface;
 
 
 static void initialize_nvs()
@@ -135,7 +141,8 @@ static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START && con) {
-        esp_wifi_connect();
+        wifi_stopped=0;
+    	esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     	if(con)
     	{
@@ -151,6 +158,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
    		{
    			tcpip_adapter_stop(ifindex);
     		ESP_LOGI(TAGW,"wifi disconnected");
+    		ready_to_send=0;
    		}
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -160,7 +168,10 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         ready_to_send=1;
+    } else if (event_base == WIFI_EVENT && event_id==WIFI_EVENT_STA_STOP){
+    	wifi_stopped=1;
     }
+
 }
 
 void send_to_cloud()
@@ -241,11 +252,15 @@ static void wifi_handlers()
 }
 
 
-static void wifi_prepare()
+static esp_err_t wifi_prepare()
 {
+	ready_to_send=0;
+	wifi_stopped=1;
+	const uint16_t retries=1000;
+	uint16_t retry=retries;
 	wifi_handlers();
     esp_netif_init();
-    esp_netif_create_default_wifi_sta();
+    wifi_interface=esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
     get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
@@ -256,6 +271,35 @@ static void wifi_prepare()
     con=1;
     ESP_ERROR_CHECK( esp_wifi_start() );
     ESP_ERROR_CHECK( esp_wifi_connect() );
+    while(!ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+    if(ready_to_send)
+    {
+    	esp_netif_dns_info_t dns;
+    	esp_netif_get_dns_info(wifi_interface,ESP_NETIF_DNS_MAIN,&dns);
+    	ESP_LOGI("wifi_prepare","DNS=%s",ip4addr_ntoa((const ip4_addr_t*)(&(dns.ip))));
+    	return ESP_OK;
+    }
+	ESP_LOGE("wifi_prepare","Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
+    return ESP_ERR_TIMEOUT;
+
+}
+
+static void wifi_unprepare()
+{
+	con=0;
+	const uint16_t retries=300;
+	uint16_t retry=retries;
+	esp_wifi_disconnect();
+	esp_wifi_stop();
+//    while(ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+//    retry=retries;
+//    while(wifi_stopped || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+	ESP_LOGI("wifi_unprepare","wifi stopped");
+//	if(wifi_interface!=NULL) esp_netif_destroy(wifi_interface);
+    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+    ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
+    ESP_ERROR_CHECK(esp_event_loop_delete_default());
+    vEventGroupDelete(s_wifi_event_group);
 }
 
 static int16_t test_update_table(uint32_t ser, uint32_t seq)
@@ -679,30 +723,12 @@ static void s2lp_wait()
 		i0=test_update_table(data.serial_number,data.seq_number);
 		if(i0!=-1)
 		{
-
-			if(!ready_to_send)
+			if(wifi_prepare()==ESP_OK)
 			{
-				wifi_prepare();
-
-				x=x0;
-				while(x--)
-				{
-					if(ready_to_send) break;
-					else
-					{
-						vTaskDelay(dt/portTICK_PERIOD_MS);
-					}
-				}
+				send_to_cloud1(true);
+				update_table(data.serial_number,data.seq_number,i0);
 			}
-
-			if(!ready_to_send)
-			{
-				ESP_LOGE(TAG,"Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
-				continue;
-			}
-
-			send_to_cloud1(true);
-			update_table(data.serial_number,data.seq_number,i0);
+			else ESP_LOGE("s2lp_wait","Failed to send - no connection");
 		}
 		else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
 	}
@@ -713,12 +739,7 @@ static void s2lp_wait()
 	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
 	    aws_con=0;
 	}
-	if(ready_to_send)
-	{
-		con=0;
-		esp_wifi_disconnect();
-		esp_wifi_stop();
-	}
+	wifi_unprepare();
 }
 
 static void config_isr0(void)
@@ -748,7 +769,7 @@ static void config_isr0(void)
     ESP_LOGI(TAG,"handler added to isr service");
 }
 
-static void s2lp_start()
+static esp_err_t s2lp_start()
 {
 	start_s2lp_console();
 	ESP_LOGI("start1","UID=%08X",uid);
@@ -756,19 +777,61 @@ static void s2lp_start()
     get_value_from_nvs("T", 0, NULL, &mode);
 
     seq=0;
-    if(mode==RECEIVE_MODE) s2lp_rec_start();
+    if(mode==RECEIVE_MODE) return s2lp_rec_start();
     if(mode==TRANSMIT_MODE)
     {
     	get_value_from_nvs("X", 0, NULL, &rep);
     	next=uid;
     	s2lp_trans_start();
     }
+    return ESP_OK;
 }
 
-static void s2lp_rec_start()
+
+void time_sync_notification_cb(struct timeval *tv)
+{
+    if(sizeof(time_t)==4) time0=tv->tv_sec;
+    else time0=*((uint32_t*)(&(tv->tv_sec)));
+    ESP_LOGI("time sync", "Notification of a time synchronization event time0=%d, %08lx",time0,tv->tv_sec);
+}
+
+static void initialize_sntp(void)
+{
+    ESP_LOGI(TAG, "Initializing SNTP");
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+//    sntp_setservername(0,"185.189.12.50");
+    sntp_set_time_sync_notification_cb(time_sync_notification_cb);
+    sntp_init();
+}
+
+static esp_err_t set_global_sec()
+{
+	esp_err_t err;
+	if((err=wifi_prepare())!=ESP_OK) return err;
+
+	initialize_sntp();
+
+    // wait for time to be set
+    int retry = 0;
+    const int retry_count = 10;
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+        ESP_LOGI("time sync", "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+
+	wifi_unprepare();
+	if(retry==retry_count) return ESP_FAIL;
+    ESP_LOGI("time sync", "Finished... ");
+	return ESP_OK;
+}
+
+static esp_err_t s2lp_rec_start()
 {
 
 	table.n_of_rows=0;
+
+	if(set_global_sec()!=ESP_OK) return ESP_FAIL;
 
 	radio_rx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_rx_init proceed");
@@ -777,6 +840,7 @@ static void s2lp_rec_start()
 
     ESP_LOGI(TAG,"s2lp irq Status get");
     S2LPCmdStrobeRx();
+    return ESP_OK;
 };
 
 static void s2lp_rec_start2(void *arg)
@@ -868,78 +932,92 @@ void to_sleep(uint32_t timeout)
 	esp_deep_sleep_start();
 }
 
-void app_main(void)
+
+static void system_init()
 {
 	init_uart0();
 	initialize_nvs();
 	S2LPSpiInit();
+}
+
+
+void app_main(void)
+{
+	system_init();
 	uint64_t sleep_time=30000000;
+	trans_sleep=30000000;
 	rtc_gpio_hold_dis(PIN_NUM_SDN);
 	switch (esp_sleep_get_wakeup_cause()) {
-        case ESP_SLEEP_WAKEUP_EXT1: {
-        	ESP_LOGI("app_main","Wakeup!!! interrupt num_of_rows=%d",table.n_of_rows);
+		// Interrupt from S2LP
+		case ESP_SLEEP_WAKEUP_EXT1:
+			ESP_LOGI("app_main","Wakeup!!! interrupt num_of_rows=%d",table.n_of_rows);
 			S2LPGpioIrqGetStatus(&xIrqStatus);
-		   	ESP_LOGI("app_main","irq=0x%08X",((uint32_t*)(&xIrqStatus))[0]);
-		    if(xIrqStatus.RX_DATA_READY)
-		    {
-		    	if(mode==RECEIVE_MODE)
-		    	{
-		    		ESP_LOGI("app_main","RECIEVE MODE");
-		    		s2lp_wait();
-		    		sleep_time=60000000;
-		    	}
-		    }
-		    else if(xIrqStatus.TX_DATA_SENT)
-		    {
-		    	if(mode==TRANSMIT_MODE)
-		    	{
-		    		ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
-		        	S2LPEnterShutdown();
-		    		sleep_time=trans_sleep;
-		    		only_timer_wakeup=1;
-		    	}
-		    }
-		    else
-		    {
-	    		sleep_time=trans_sleep;
-		    }
-        	break;
-        }
-        case ESP_SLEEP_WAKEUP_TIMER: {
-	       	ESP_LOGI("app_main","Wake Up by timer mode=%d",mode);
-        	if(mode==TRANSMIT_MODE)
-        	{
-        		if(cw || pn9)
-        		{
-        			if(cw) ESP_LOGI("TRANSMIT MODE ", "CW mode %d",seq);
-        			if(pn9) ESP_LOGI("TRANSMIT MODE ", "PN9 mode %d",seq);
-        			seq++;
-    		    	sleep_time=60000000;
-		    		only_timer_wakeup=1;
-        		}
-        		else
-        		{
-		        	S2LPExitShutdown();
-        			s2lp_trans_start();
-        			only_timer_wakeup=0;
-        			sleep_time=trans_sleep;
-        		}
-        	}
-        	else
-        	{
-        		seq++;
-        		ESP_LOGI("app_main","I am alive %d",seq);
-        	}
-            break;
-        }
-        case ESP_SLEEP_WAKEUP_UNDEFINED:
-        default:
-        	ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
-        	S2LPEnterShutdown();
-        	S2LPExitShutdown();
-        	s2lp_start();
+			ESP_LOGI("app_main","irq=0x%08X",((uint32_t*)(&xIrqStatus))[0]);
+			if(xIrqStatus.RX_DATA_READY)
+			{
+				if(mode==RECEIVE_MODE)
+				{
+					ESP_LOGI("app_main","RECIEVE MODE");
+					s2lp_wait();
+					sleep_time=60000000;
+				}
+			}
+			else if(xIrqStatus.TX_DATA_SENT)
+			{
+				if(mode==TRANSMIT_MODE)
+				{
+					ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
+					// Turn off s2lp
+					S2LPEnterShutdown();
+					sleep_time=trans_sleep;
+					only_timer_wakeup=1;
+				}
+			}
+			else
+			{
+				sleep_time=trans_sleep;
+			}
+			break;
+			// Timer wakeup
+		case ESP_SLEEP_WAKEUP_TIMER:
+			ESP_LOGI("app_main","Wake Up by timer mode=%d",mode);
+			if(mode==TRANSMIT_MODE)
+			{
+				if(cw || pn9)
+				{
+					if(cw) ESP_LOGI("TRANSMIT MODE ", "CW mode %d",seq);
+					if(pn9) ESP_LOGI("TRANSMIT MODE ", "PN9 mode %d",seq);
+					seq++;
+					sleep_time=60000000;
+					only_timer_wakeup=1;
+				}
+				else
+				{
+					S2LPExitShutdown();
+					s2lp_trans_start();
+					only_timer_wakeup=0;
+					sleep_time=trans_sleep;
+				}
+			}
+			else
+			{
+				seq++;
+				ESP_LOGI("app_main","I am alive %d",seq);
+			}
+			break;
+			//	Start or reboot
+		case ESP_SLEEP_WAKEUP_UNDEFINED:
+		default:
+			ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
+			S2LPEnterShutdown();
+			S2LPExitShutdown();
+			if(s2lp_start()!=ESP_OK)
+			{
+				vTaskDelay(10000/portTICK_PERIOD_MS);
+				esp_restart();
+			}
     }
-	ESP_LOGI("app_main","Going to sleep...");
+	ESP_LOGI("app_main","Going to sleep... %lld us",sleep_time);
 	to_sleep(sleep_time);
     while(1)
     {

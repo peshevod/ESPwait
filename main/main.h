@@ -68,7 +68,7 @@ static void config_isr0(void);
 static void s2lp_wait(void);
 static void s2lp_trans(void);
 void test_gpio(void);
-static void s2lp_rec_start(void);
+static esp_err_t s2lp_rec_start(void);
 static void s2lp_rec_start2(void *arg);
 static void s2lp_trans_start(void);
 void init_bt_gattc(void);
