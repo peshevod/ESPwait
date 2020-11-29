@@ -25,7 +25,7 @@
 _param _params[]=
 {
 		{"F",NVS_TYPE_U32, "Base frequency, Hz"},
-	    {"M",NVS_TYPE_U8, "Modulation 0x00: 2-FSK, 0x10: 4-FSK, 0x20: 2-GFSK BT=1, 0x30: 4-GFSK BT=1, 0x50: ASK/OOK, 0x60: polar, 0x70: no mod, 0xa0: 2-GFSK BT=0.5, 0xb0: 4-GFSK BT=0.5"},
+	    {"M",NVS_TYPE_U8, "Modulation 0x00: 2-FSK, 0x10: 4-FSK, 0x20: 2-GFSK BT=1, 0x30: 4-GFSK BT=1, 0x50: ASK/OOK, 0x60: polar, 0x70: no mod(CW), 0xa0: 2-GFSK BT=0.5, 0xb0: 4-GFSK BT=0.5"},
 	    {"R",NVS_TYPE_U32,"Datarate bit/s"},
 	    {"W",NVS_TYPE_U32,"Bandwidth, Hz"},
 	    {"D",NVS_TYPE_U32, "Frequency deviation, Hz"},
@@ -34,7 +34,7 @@ _param _params[]=
 	    {"T",NVS_TYPE_U8, "Mode 1: transmit, 0: receive"},
 	    {"L",NVS_TYPE_U8, "LDO bypass 1: yes, 0 no"},
 	    {"C",NVS_TYPE_I32, "Channel number"},
-	    {"E",NVS_TYPE_U32, "Preamble length - number of 01 or 10 sequencies"},
+	    {"E",NVS_TYPE_U32, "Preamble length - number of 01 or 10 sequencies. If Preamble length == 0 then continuous transmit with PN9 source"},
 	    {"UID",NVS_TYPE_U32, "UID - is low 4 bytes of MAC address"},
 	    {"I",NVS_TYPE_U32, "Interval between actions (trans or rec), sec."},
 	    {"X",NVS_TYPE_U8, "Number of repeated messages in trans mode"},

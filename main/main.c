@@ -53,7 +53,6 @@ static int16_t i0;
 //static uint8_t* data2;
 static const char* TAG = "ESPwait";
 static const char* TAG1 = "SendToCloud";
-static const char *TAGW = "wifi station";
 char buf[MAX_MESSAGE_SIZE];
 char mes1[MAX_MESSAGE_SIZE];
 char mes2[MAX_MESSAGE_SIZE];
@@ -63,8 +62,8 @@ static input_data_t mes,data;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
-static uint8_t ready_to_send=0;
-static uint8_t wifi_stopped;
+static volatile uint8_t ready_to_send=0;
+static volatile uint8_t wifi_stopped;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
@@ -137,43 +136,6 @@ void init_uart0()
 }
 
 
-static void event_handler(void* arg, esp_event_base_t event_base,
-                                int32_t event_id, void* event_data)
-{
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START && con) {
-        wifi_stopped=0;
-    	esp_wifi_connect();
-    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    	if(con)
-    	{
-    		if (s_retry_num < ESP_MAXIMUM_RETRY) {
-    			esp_wifi_connect();
-    			xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-    			s_retry_num++;
-    			ESP_LOGI(TAGW, "retry to connect to the AP ssid=%s pass=%s retry=%d",sta_config.sta.ssid,sta_config.sta.password,s_retry_num);
-    		}
-    		ESP_LOGI(TAGW,"connect to the AP fail");
-    	}
-    	else
-   		{
-   			tcpip_adapter_stop(ifindex);
-    		ESP_LOGI(TAGW,"wifi disconnected");
-    		ready_to_send=0;
-   		}
-    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAGW, "got ip:%s",
-        		ip4addr_ntoa((const ip4_addr_t*)(&(event->ip_info.ip))));
-        ifindex=event->if_index;
-        s_retry_num = 0;
-        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        ready_to_send=1;
-    } else if (event_base == WIFI_EVENT && event_id==WIFI_EVENT_STA_STOP){
-    	wifi_stopped=1;
-    }
-
-}
-
 void send_to_cloud()
 {
     con=1;
@@ -243,6 +205,44 @@ void test_gpio(void)
 }
 
 
+static void event_handler(void* arg, esp_event_base_t event_base,
+                                int32_t event_id, void* event_data)
+{
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START && con) {
+		ESP_LOGI("wifi handler","wifi started");
+        wifi_stopped=0;
+    	esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    	if(con)
+    	{
+    		if (s_retry_num < ESP_MAXIMUM_RETRY) {
+    			esp_wifi_connect();
+    			xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    			s_retry_num++;
+    			ESP_LOGI("wifi handler", "retry to connect to the AP ssid=%s pass=%s retry=%d",sta_config.sta.ssid,sta_config.sta.password,s_retry_num);
+    		} else ESP_LOGI("wifi handler","connect to the AP fail");
+    	}
+    	else
+   		{
+   			tcpip_adapter_stop(ifindex);
+    		ESP_LOGI("wifi handler","wifi disconnected");
+    		ready_to_send=0;
+   		}
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI("wifi handler", "got ip:%s",
+        		ip4addr_ntoa((const ip4_addr_t*)(&(event->ip_info.ip))));
+        ifindex=event->if_index;
+        s_retry_num = 0;
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        ready_to_send=1;
+    } else if (event_base == WIFI_EVENT && event_id==WIFI_EVENT_STA_STOP){
+		ESP_LOGI("wifi handler","wifi stopped");
+    	wifi_stopped=1;
+    }
+
+}
+
 static void wifi_handlers()
 {
     s_wifi_event_group = xEventGroupCreate();
@@ -290,13 +290,18 @@ static void wifi_unprepare()
 	const uint16_t retries=300;
 	uint16_t retry=retries;
 	esp_wifi_disconnect();
+    while(ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+	ESP_LOGI("wifi_unprepare","wifi disconnected");
 	esp_wifi_stop();
-//    while(ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
-//    retry=retries;
-//    while(wifi_stopped || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+    retry=retries;
+    while(!wifi_stopped || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
 	ESP_LOGI("wifi_unprepare","wifi stopped");
-//	if(wifi_interface!=NULL) esp_netif_destroy(wifi_interface);
-    ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+	esp_wifi_deinit();
+	ESP_LOGI("wifi_unprepare","wifi deinited");
+	if(wifi_interface!=NULL) esp_netif_destroy(wifi_interface);
+	ESP_LOGI("wifi_unprepare","wifi netif interface destroyed");
+//	vTaskDelay(3000/portTICK_PERIOD_MS);
+	ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
     ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler));
     ESP_ERROR_CHECK(esp_event_loop_delete_default());
     vEventGroupDelete(s_wifi_event_group);
@@ -708,9 +713,6 @@ static void s2lp_getdata()
 
 static void s2lp_wait()
 {
-    uint32_t dt=100;
-    uint32_t x0=16000/dt;
-    uint32_t x;
     ready_to_send=0;
     aws_con=0;
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
@@ -920,7 +922,6 @@ static void s2lp_trans()
 
 void to_sleep(uint32_t timeout)
 {
-	esp_bt_controller_disable();
 	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
 	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);

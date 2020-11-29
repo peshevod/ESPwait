@@ -1,7 +1,7 @@
 /*
  * shell.h
  *
- *  Created on: 15 апр. 2020 г.
+ *  Created on: 15 пїЅпїЅпїЅ. 2020 пїЅ.
  *      Author: ilya_000
  */
 
@@ -53,7 +53,7 @@ typedef struct exchange_par
 void start_x_shell(console_type con);
 void EUSART1_init(console_type con);
 void taskRead(void* param);
-void send_chars(console_type con, char* x);
+int send_chars(console_type con, char* x);
 
 #ifdef	__cplusplus
 }

@@ -50,13 +50,13 @@ void EUSART1_init(console_type con)
 	z[con].c_len=0;
 	z[con].hex=0;
 	z[con].w_ready=1;
-	z[con].c_crlf=1;
+//	z[con].c_crlf=1;
 	z[con].lenr=0;
 	z[con].bufr_len=0;
-	z[con].c_prev=0;
-	z[con].do_prev=0;
-	z[con].did_prev=0;
-	z[con].w_did=0;
+//	z[con].c_prev=0;
+//	z[con].do_prev=0;
+//	z[con].did_prev=0;
+//	z[con].w_did=0;
 	if(con) strcpy(tname,"taskRead1"); else strcpy(tname,"taskRead0");
     xTaskCreate(taskRead, tname, 2048, (void *)(con), 5, &(rtask[con]));
 }
@@ -109,8 +109,7 @@ void taskRead(void* param)
 				xSemaphoreGive(z[con].xSemaphore);
 				z[con].gError=11;
 				break;
-			}
-			xSemaphoreGive(z[con].xSemaphore);
+			} else xSemaphoreGive(z[con].xSemaphore);
 		}
 		vTaskDelay(10 / portTICK_PERIOD_MS);
 	}
@@ -124,45 +123,26 @@ char EUSART1_Read(console_type con)
 	size_t size;
 	char c;
 	c=-1;
-	if(z[con].c_crlf && z[con].do_prev)
-	{
-		z[con].do_prev=0;
-		z[con].did_prev=1;
-		return '\n';
-	}
 	while(!z[con].gError)
 	{
-		while(!z[con].gError)
+		if(z[con].bufr_len!=0)
 		{
-			if(z[con].bufr_len!=0)
-			{
-				c=z[con].bufr[z[con].lenr++];
-				if(z[con].lenr>=z[con].bufr_len) z[con].bufr_len=0;
-				break;
-			}
-			xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
-			char* buf1=(char*)xRingbufferReceiveUpTo(z[con].rb, &size,0, BUF_LEN);
-			if(buf1!=NULL)
-			{
-				memcpy(z[con].bufr,buf1,size);
-				z[con].bufr_len=size;
-				z[con].lenr=0;
-				vRingbufferReturnItem(z[con].rb, buf1);
-			}
-			xSemaphoreGive(z[con].xSemaphore);
-			vTaskDelay(10 / portTICK_PERIOD_MS);
+			c=z[con].bufr[z[con].lenr++];
+			if(z[con].lenr>=z[con].bufr_len) z[con].bufr_len=0;
+			break;
 		}
-		if(!(z[con].c_crlf && c=='\n' && z[con].did_prev)) break;
-		z[con].did_prev=0;
+		xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
+		char* buf1=(char*)xRingbufferReceiveUpTo(z[con].rb, &size,0, BUF_LEN);
+		if(buf1!=NULL)
+		{
+			memcpy(z[con].bufr,buf1,size);
+			z[con].bufr_len=size;
+			z[con].lenr=0;
+			vRingbufferReturnItem(z[con].rb, buf1);
+		}
+		xSemaphoreGive(z[con].xSemaphore);
+		vTaskDelay(10 / portTICK_PERIOD_MS);
 	}
-	z[con].did_prev=0;
-	if(z[con].c_crlf && (c=='\n' || c=='\r'))
-	{
-		c='\r';
-		z[con].do_prev=1;
-		z[con].did_prev=0;
-	}
-	z[con].c_prev=c;
 	return c;
 }
 
@@ -173,7 +153,7 @@ int EUSART1_is_rx_ready(console_type con)
 	UBaseType_t uxWrite;
 	UBaseType_t uxAcquire;
 	UBaseType_t uxItemsWaiting;
-	if(z[con].bufr_len!=0 || z[con].do_prev) return 1;
+	if(z[con].bufr_len!=0) return 1;
 	xSemaphoreTake(z[con].xSemaphore,portMAX_DELAY);
 	vRingbufferGetInfo(z[con].rb, &uxFree, &uxRead, &uxWrite, &uxAcquire, &uxItemsWaiting);
 	xSemaphoreGive(z[con].xSemaphore);
@@ -181,77 +161,37 @@ int EUSART1_is_rx_ready(console_type con)
 	else return 0;
 }
 
-static int c_write(console_type con, char* c)
+static int EUSART1_Write(console_type con, char c)
 {
-	int k=120000, res;
+	int k=12000, res;
+	z[con].w_ready=0;
+	res=-1;
 	do
 	{
 		if((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE)
 		{
-			res=-1;
-			if(con==BT_CONSOLE) res=write(console_fd,c,1);
-			if(con==SERIAL_CONSOLE) res=uart_write_bytes(UART_NUM_0,c,1);
+			if(con==BT_CONSOLE) res=write(console_fd,&c,1);
+			if(con==SERIAL_CONSOLE) res=uart_write_bytes(UART_NUM_0,&c,1);
+			if(res==1)
+			{
+				z[con].w_ready=1;
+				return 1;
+			}
 		}
-		else
-		{
-			stop_console[con]=1;
-			res=-1;
-			break;
-		}
-		if(res!=1)
-		{
-			z[con].w_ready=0;
-			vTaskDelay(1 / portTICK_PERIOD_MS);
-		}
-		else
-		{
-			z[con].w_ready=1;
-			return 1;
-		}
-		if(con==BT_CONSOLE) send_chars(SERIAL_CONSOLE,".");
+		vTaskDelay(10 / portTICK_PERIOD_MS);
 	} while (k-->0);
-	z[con].w_ready=1;
 	return res;
 }
 
-int EUSART1_Write(console_type con, char c)
-{
-	char w_c=c;
-	int rc;
-	if(c=='\n' || c=='\r')
-	{
-		if(c=='\n' && z[con].w_did)
-		{
-			z[con].w_did=0;
-			return 1;
-		}
-		w_c='\r';
-		rc=c_write(con, &w_c);
-		w_c='\n';
-		z[con].w_did=1;
-	} else z[con].w_did=0;
-	rc=c_write(con, &w_c);
-	return rc;
-}
 
-int EUSART1_is_tx_done(console_type con)
-{
-	if(z[con].w_ready && ((con==BT_CONSOLE && console_fd!=-1) || con==SERIAL_CONSOLE))
-	{
-		return 1;
-	}
-	else
-	{
-//		if(con==BT_CONSOLE)send_chars(SERIAL_CONSOLE,".");
-		return 0;
-	}
-}
-
-
-void send_chars(console_type con, char* x) {
+int send_chars(console_type con, char* x) {
     uint8_t i=0;
-    while(x[i]!=0) EUSART1_Write(con, x[i++]);
-    while (!EUSART1_is_tx_done(con)) if(stop_console[con]) return;
+    while(x[i]!=0)
+	{
+    	if(EUSART1_Write(con, x[i++])==1) continue;
+    	return -1;
+	}
+    return 0;
 }
 
 
@@ -288,7 +228,6 @@ static int getcert(console_type con, char* cert)
 		TimerHandle_t Timer4= con==1 ? xTimerCreate("Timer41",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback1) : xTimerCreate("Timer40",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback0);
 		xTimerStart(Timer4,0);
 		z[con].gError=0;
-		z[con].c_crlf=0;
 		do
 		{
 			while(!timer4_expired[con] && !EUSART1_is_rx_ready(con)) vTaskDelay(1/portTICK_RATE_MS);
@@ -300,7 +239,6 @@ static int getcert(console_type con, char* cert)
 			EUSART1_Write(con,c);
 			data[len++]=c;
 		} while(!timer4_expired[con]);
-		z[con].c_crlf=1;
 		if(timer4_expired[con])
 		{
 			free(data);
@@ -333,7 +271,7 @@ static int getcert(console_type con, char* cert)
 
 
 
-void print_par(console_type con, char* p)
+int print_par(console_type con, char* p)
 {
 	char value[64];
 	char y[256];
@@ -343,15 +281,15 @@ void print_par(console_type con, char* p)
         if(!strcmp(__params->c,p))
         {
         	get_value_from_nvs(p, z[con].hex, y, value);
-        	send_chars(con, y);
-            return;
+        	return send_chars(con, y);
         }
         __params++;
     }
+    return -1;
 }
 
 
-void EUSART1_list(console_type con)
+int EUSART1_list(console_type con)
 {
 	char value[64];
 	char y[256];
@@ -360,8 +298,9 @@ void EUSART1_list(console_type con)
 	do
 	{
 		rc=list(z[con].hex,y,value);
-		send_chars(con, y);
+		if(send_chars(con, y)!=0) return -1;
 	} while(rc==1);
+	return 0;
 }
 
 void EUSART1_help(console_type con)
@@ -463,7 +402,6 @@ void start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
     int32_t x=con;
-    char str[25];
     EUSART1_init(con);
     add_uid();
 	send_chars(con, "\n Press any key to start console...\n");
@@ -487,49 +425,56 @@ void start_x_shell(console_type con) {
     send_prompt();
     while (1)
     {
-        if ((!start && s2lp_console_timer_expired[con]) || stop_console[con] )
+        if (stop_console[con])
+        {
+        	send_exit();
+        	return;
+        }
+    	if ((!start && s2lp_console_timer_expired[con]))
         {
         	send_exit();
         	stop_console[con]=1;
-//        	vTaskDelete(rtask[con]);
             return;
         }
         if (EUSART1_is_rx_ready(con))
         {
             c = EUSART1_Read(con);
-            EUSART1_Write(con, c);
+            if(EUSART1_Write(con, c)!=1)
+			{
+				stop_console[con]=1;
+				return;
+			}
             if (c == 0x08) {
-                EUSART1_Write(con, ' ');
-                EUSART1_Write(con, c);
+                if(EUSART1_Write(con, ' ')!=1 || EUSART1_Write(con, c)!=1)
+				{
+                	stop_console[con]=1;
+                    return;
+				}
                 z[con].c_len--;
-                while (!EUSART1_is_tx_done(con));
                 continue;
             }
-            while (!EUSART1_is_tx_done(con) || stop_console[con]);
             start = 1;
-            switch (c) {
-                case '\r':
-                    z[con].c_buf[z[con].c_len] = 0;
-                    empty_RXbuffer(con);
-                    uint8_t r = proceed(con);
-                    if (r == 0)
-                    {
-//                    	vTaskDelete(rtask[con]);
-                    	vTaskDelay(500 / portTICK_PERIOD_MS);
-                    	return;
-                    }
-                    if (r != 1) send_error()
-                    else send_prompt();
-                    break;
-                default:
-                    if (c >= 0x61 && c <= 0x7A) c -= 0x20;
-                    z[con].c_buf[z[con].c_len++] = c;
-                    continue;
+            if(c=='\r' || c== '\n')
+            {
+				z[con].c_buf[z[con].c_len] = 0;
+				uint8_t r = proceed(con);
+				if (r == 0)
+				{
+					vTaskDelay(500 / portTICK_PERIOD_MS);
+					stop_console[con]=1;
+					return;
+				}
+				if (r != 1) send_error()
+				else send_prompt();
+				empty_RXbuffer(con);
+				z[con].c_len = 0;
             }
-            empty_RXbuffer(con);
-            z[con].c_len = 0;
-        }
-        vTaskDelay(100/portTICK_RATE_MS);
+            else
+            {
+				if (c >= 0x61 && c <= 0x7A) c -= 0x20;
+				z[con].c_buf[z[con].c_len++] = c;
+            }
+        } else vTaskDelay(100/portTICK_RATE_MS);
     }
 }
 
