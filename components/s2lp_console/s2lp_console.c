@@ -26,7 +26,6 @@
 #include "shell.h"
 #include "spp_server.h"
 
-static const char* TAG = "s2lp_console";
 extern uint8_t s2lp_console_ex;
 extern int volatile console_fd;
 char x[128];
@@ -35,12 +34,6 @@ extern uint8_t stop_console[2];
 extern RTC_SLOW_ATTR uint32_t uid;
 
 int volatile s2lp_console_timer_expired;
-
-static void vTimerCallback( TimerHandle_t pxTimer )
-{
-	s2lp_console_timer_expired=1;
-}
-
 
 void bt_console()
 {
@@ -54,7 +47,7 @@ void bt_console()
     }
     if(console_fd!=-1)
     {
-    	start_x_shell(BT_CONSOLE);
+    	if(start_x_shell(BT_CONSOLE)!=0) ESP_LOGE("bluetooth console","Some errors on bluetooth console");
     }
     ESP_LOGI("bt_console","shutting SPP server\n");
     shutdown_spp_server();
@@ -65,7 +58,7 @@ void bt_console()
 
 void serial_console()
 {
-   	start_x_shell(SERIAL_CONSOLE);
+   	if(start_x_shell(SERIAL_CONSOLE)!=0) ESP_LOGE("serial_console","Some errors on serial console");
     ESP_LOGI("serial_console","SERIAL CONSOLE stopped\n");
     stop_console[SERIAL_CONSOLE]=2;
 	vTaskDelete(NULL);
@@ -73,7 +66,6 @@ void serial_console()
 
 void start_s2lp_console()
 {
-    size_t len;
     get_uid(&uid);
     stop_console[SERIAL_CONSOLE]=0;
     stop_console[BT_CONSOLE]=0;

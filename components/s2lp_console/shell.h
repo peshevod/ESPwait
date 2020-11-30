@@ -23,9 +23,9 @@ extern "C" {
 #define RING_BUF_LEN 1024
 
 
-#define send_prompt()   {send_chars(con, (char*)prompt);}
-#define send_error()   {send_chars(con, (char*)err);}
-#define send_exit()   {send_chars(con, (char*)ex);}
+#define send_prompt()   {if(send_chars(con, (char*)prompt)!=0) { stop_console[con]=1;return -1;}}
+#define send_error()   {if(send_chars(con, (char*)err)!=0) { stop_console[con]=1;return -1;}}
+#define send_exit()   {if(send_chars(con, (char*)ex)!=0) { stop_console[con]=1;return -1;}}
 
 typedef struct exchange_par
 {
@@ -37,20 +37,15 @@ typedef struct exchange_par
 	uint8_t c_len;
 	uint8_t hex;
 	int w_ready;
-	int w_did;
-	int c_crlf;
 	int lenr;
 	char bufr[BUF_LEN];
 	int bufr_len;
-	char c_prev;
-	int do_prev;
-	int did_prev;
 	int len;
 	console_type con;
 } exchange_par_t;
 
 
-void start_x_shell(console_type con);
+int start_x_shell(console_type con);
 void EUSART1_init(console_type con);
 void taskRead(void* param);
 int send_chars(console_type con, char* x);

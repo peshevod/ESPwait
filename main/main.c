@@ -928,7 +928,7 @@ void to_sleep(uint32_t timeout)
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
-	rtc_gpio_isolate(GPIO_INPUT_IO_0);
+//	rtc_gpio_isolate(GPIO_INPUT_IO_0);
 	rtc_gpio_hold_en(PIN_NUM_SDN);
 	esp_deep_sleep_start();
 }
