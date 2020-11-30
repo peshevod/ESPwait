@@ -49,6 +49,7 @@ int start_x_shell(console_type con);
 void EUSART1_init(console_type con);
 void taskRead(void* param);
 int send_chars(console_type con, char* x);
+int write_cert_to_nvs(char* cert, char* data, int len,char* str_md5);
 
 #ifdef	__cplusplus
 }

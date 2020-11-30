@@ -21,7 +21,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "spi_intf.h"
-//#include "shell.h"
+#include "shell.h"
 #include "s2lp_console.h"
 #include "cmd_nvs.h"
 #include "main.h"
@@ -936,8 +936,16 @@ void to_sleep(uint32_t timeout)
 
 static void system_init()
 {
+	char str_md5[40];
 	init_uart0();
 	initialize_nvs();
+	get_certs();
+	if(pCert==NULL && write_cert_to_nvs("CERT",(char*)certificate_pem_crt_start, certificate_pem_crt_end-certificate_pem_crt_start, str_md5))
+		ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start);
+	if(pRoot==NULL && write_cert_to_nvs("ROOT",(char*)aws_root_ca_pem_start, aws_root_ca_pem_end-aws_root_ca_pem_start, str_md5))
+		ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start);
+	if(pKey==NULL && write_cert_to_nvs("KEY",(char*)private_pem_key_start, private_pem_key_end-private_pem_key_start, str_md5))
+		ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start);
 	S2LPSpiInit();
 }
 

@@ -38,6 +38,10 @@ extern int volatile console_fd;
 uint8_t stop_console[2];
 TaskHandle_t rtask[2];
 //static int c_next;
+extern char* pCert;
+extern char* pRoot;
+extern char* pKey;
+
 
 
 
@@ -207,14 +211,37 @@ static void Timer4Callback1( TimerHandle_t pxTimer )
 }
 
 
+int write_cert_to_nvs(char* cert, char* data, int len,char* str_md5)
+{
+	char key_name[16];
+	unsigned char md5[16];
+	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
+	{
+		if(mbedtls_md5_ret((const unsigned char*)data,len,md5)) return -1;
+		sprintf(str_md5,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",md5[0],md5[1],md5[2],md5[3],md5[4],md5[5],md5[6],md5[7],md5[8],md5[9],md5[10],md5[11],md5[12],md5[13],md5[14],md5[15]);
+		strcpy(key_name,"MD5");
+		strcat(key_name,cert);
+		if(set_cert(cert,data,len)==ESP_OK)
+		{
+			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len);
+			if(set_value_in_nvs(key_name,str_md5)!=ESP_OK) return -2;
+			ESP_LOGI(__func__,"certificate type=%s %s = %s",cert,key_name,str_md5);
+		}
+		if(!strcmp(cert,"KEY")) pKey=data;
+		else if(!strcmp(cert,"ROOT")) pRoot=data;
+		else if(!strcmp(cert,"CERT")) pCert=data;
+		return 0;
+	}
+	ESP_LOGI(__func__,"wrong cert type");
+	return -3;
+}
+
 static int getcert(console_type con, char* cert)
 {
 	int len=0;
 	char c;
-	unsigned char md5[16];
 	char str_md5[40];
 	char str[64];
-	char key_name[16];
 	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
 	{
 		char* data=(char*)malloc(4096);
@@ -239,32 +266,30 @@ static int getcert(console_type con, char* cert)
 			free(data);
 			return 2;
 		}
-		if(mbedtls_md5_ret((const unsigned char*)data,len,md5))
+		switch(write_cert_to_nvs(cert,data,len,str_md5))
 		{
-			send_chars(con, "Error while calculating MD5\n");
-			free(data);
-			return 2;
-		}
-		sprintf(str_md5,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",md5[0],md5[1],md5[2],md5[3],md5[4],md5[5],md5[6],md5[7],md5[8],md5[9],md5[10],md5[11],md5[12],md5[13],md5[14],md5[15]);
-		sprintf(str,"\nCheck MD5 sum: %s\n",str_md5);
-		send_chars(con, str);
-		strcpy(key_name,"MD5");
-		strcat(key_name,cert);
-		if(set_cert(cert,data,len)==ESP_OK)
-		{
-			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len);
-			if(set_value_in_nvs(key_name,str_md5)==ESP_OK)
-			{
+			case -1:
+				send_chars(con, "Error while calculating MD5\n");
+				free(data);
+				return 2;
+			case -2:
+				send_chars(con, "Error while writing MD5 to flash\n");
+				free(data);
+				return 2;
+			case -3:
+				send_chars(con, "Wrong cert name\n");
+				free(data);
+				return 2;
+			case 0:
+				sprintf(str,"\nCheck MD5 sum: %s\n",str_md5);
+				send_chars(con, str);
 				free(data);
 				return 1;
-			}
 		}
 		free(data);
 	}
 	return 2;
 }
-
-
 
 static int print_par(console_type con, char* p)
 {
