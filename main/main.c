@@ -139,25 +139,6 @@ void init_uart0()
 }
 
 
-void send_to_cloud()
-{
-    con=1;
-    ESP_ERROR_CHECK( esp_wifi_start() );
-//    ESP_ERROR_CHECK( esp_wifi_connect() );
-   	ESP_LOGI(TAG1,"--- Begin of transfer\n");
-    while(1)
-    {
-    	ESP_LOGI(TAG1,"REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",mes.input_signal_power,mes.seq_number,mes.serial_number,mes.data[0]);
-    	vTaskDelay(10000 / portTICK_PERIOD_MS);
-    	if(!xQueueReceive(s2lp_evt_queue,&mes,100/portTICK_PERIOD_MS)) break;
-    }
-   	ESP_LOGI(TAG1,"--- End of transfer\n");
-	con=0;
-    ESP_ERROR_CHECK( esp_wifi_disconnect() );
-    ESP_ERROR_CHECK( esp_wifi_stop() );
-}
-
-
 static void IRAM_ATTR s2lp_intr_handler(void* arg)
 {
 	input_data_t data_in;
@@ -350,22 +331,23 @@ void ShadowUpdateStatusCallback(const char *pThingName, ShadowActions_t action, 
 }
 
 void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
-                                    IoT_Publish_Message_Params *params, void *pData) {
-    ESP_LOGI(TAG, "Subscribe callback");
+                                    IoT_Publish_Message_Params *params, void *pData)
+{
+	char* TAG="iot_subscribe_callback_handler";
+	ESP_LOGI(TAG, "Subscribe callback");
     ESP_LOGI(TAG, "%.*s\t%.*s", topicNameLen, topicName, (int) params->payloadLen, (char *)params->payload);
 }
 
-void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data) {
-    ESP_LOGW(TAG, "MQTT Disconnect");
-
+void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
+{
+    char* TAG="disconnectCallbackHandler";
+	ESP_LOGW(TAG, "MQTT Disconnect");
     if(!mqtt_con) return;
 
     IoT_Error_t rc = FAILURE;
-
     if(NULL == pClient) {
         return;
     }
-
     if(aws_iot_is_autoreconnect_enabled(pClient)) {
         ESP_LOGI(TAG, "Auto Reconnect is enabled, Reconnecting attempt will start now");
     } else {
@@ -690,6 +672,138 @@ void send_to_cloud1(bool shadow)
 //    abort();
 }
 
+static void add_to_Payload(char* Payload, char* key, char* value, int quotes)
+{
+	char str[128];
+	if(quotes) sprintf(str,"\t\"%s\" : \"%s\"\n",key,value);
+	else sprintf(str,"\t\"%s\" : %s\n",key,value);
+	strcat(Payload,str);
+}
+
+static void send_to_cloud()
+{
+	char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-west-2.amazonaws.com";
+	char* clientID="721730703209";
+	AWS_IoT_Client client;
+	IoT_Client_Init_Params mqttInitParams;
+	IoT_Client_Connect_Params connectParams;
+	IoT_Publish_Message_Params paramsQOS0;
+	IoT_Publish_Message_Params paramsQOS1;
+    IoT_Error_t rc = FAILURE;
+    char cPayload[256];
+    char* TAG="send_to_cloud";
+
+
+    if(!aws_con)
+    {
+    	ESP_LOGI(TAG, "AWS IoT SDK Version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_TAG);
+
+		mqttInitParams = iotClientInitParamsDefault;
+		mqttInitParams.enableAutoReconnect = false; // We enable this later below
+		mqttInitParams.pHostURL = HostAddress;
+		mqttInitParams.port = AWS_IOT_MQTT_PORT;
+
+		mqttInitParams.pRootCALocation = pRoot;
+		mqttInitParams.pDeviceCertLocation = pCert;
+		mqttInitParams.pDevicePrivateKeyLocation = pKey;
+
+		mqttInitParams.mqttCommandTimeout_ms = 20000;
+		mqttInitParams.tlsHandshakeTimeout_ms = 5000;
+		mqttInitParams.isSSLHostnameVerify = true;
+		mqttInitParams.disconnectHandler = disconnectCallbackHandler;
+		mqttInitParams.disconnectHandlerData = NULL;
+
+		rc = aws_iot_mqtt_init(&client, &mqttInitParams);
+		if(SUCCESS != rc) {
+			ESP_LOGE(TAG, "aws_iot_mqtt_init returned error : %d ", rc);
+			abort();
+		}
+
+     	connectParams = iotClientConnectParamsDefault;
+		connectParams.keepAliveIntervalInSec = 10;
+		connectParams.isCleanSession = true;
+		connectParams.MQTTVersion = MQTT_3_1_1;
+		/* Client ID is set in the menuconfig of the example */
+		connectParams.pClientID = clientID;
+		connectParams.clientIDLen = (uint16_t) strlen(clientID);
+		connectParams.isWillMsgPresent = false;
+
+		ESP_LOGI(TAG, "Connecting to AWS...");
+		mqtt_con=1;
+		do {
+			rc = aws_iot_mqtt_connect(&client, &connectParams);
+			if(SUCCESS != rc) {
+				ESP_LOGE(TAG, "Error(%d) connecting to %s:%d", rc, mqttInitParams.pHostURL, mqttInitParams.port);
+				vTaskDelay(1000 / portTICK_RATE_MS);
+			}
+		} while(SUCCESS != rc);
+		aws_con=1;
+
+		/*
+		* Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
+	    *  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
+	    *  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
+	    */
+		rc = aws_iot_mqtt_autoreconnect_set_status(&client, true);
+		if(SUCCESS != rc) {
+			ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d", rc);
+			abort();
+		}
+    }
+    paramsQOS1.qos = QOS1;
+    paramsQOS1.payload = (void *) cPayload;
+    paramsQOS1.isRetained = 0;
+    do {
+
+		rc = aws_iot_mqtt_yield(&client, 100);
+		if(NETWORK_ATTEMPTING_RECONNECT == rc) {
+			// If the client is attempting to reconnect we will skip the rest of the loop.
+			continue;
+		}
+		char str[64];
+		strcpy(cPayload,"{\n");
+		sprintf(str,"%d",seq++);
+		add_to_Payload(cPayload,"GW_SEQ",str,0);
+		sprintf(str,"0x%08X",uid);
+		add_to_Payload(cPayload,"GW_UID",str,1);
+		sprintf(str,"%d",data.input_signal_power);
+		add_to_Payload(cPayload,"POWER",str,0);
+		sprintf(str,"%d",data.seq_number);
+		add_to_Payload(cPayload,"MOD_SEQ",str,0);
+		sprintf(str,"0x%08X",data.serial_number);
+		add_to_Payload(cPayload,"MOD_SN",str,1);
+		sprintf(str,"0x%08X",data.data[0]);
+		add_to_Payload(cPayload,"SENSOR",str,1);
+		sprintf(str,"%d",(data.data[0]&0x00FF0000)>>16);
+		add_to_Payload(cPayload,"JP4_MODE",str,0);
+		sprintf(str,"%d",(data.data[0]&0xFF000000)>>24);
+		add_to_Payload(cPayload,"JP5_MODE",str,0);
+		sprintf(str,"%s",data.data[0]&0x00000100 ? "ON": "OFF");
+		add_to_Payload(cPayload,"JP4_STATE",str,1);
+		sprintf(str,"%s",data.data[0]&0x00000200 ? "ON": "OFF");
+		add_to_Payload(cPayload,"JP5_STATE",str,1);
+		sprintf(str,"%s",data.data[0]&0x00000001 ? "ON": "OFF");
+		add_to_Payload(cPayload,"JP4_ALARM",str,1);
+		sprintf(str,"%s",data.data[0]&0x00000002 ? "ON": "OFF");
+		add_to_Payload(cPayload,"JP5_ALARM",str,1);
+		strcat(cPayload,"}\n");
+
+/*				"{\n \
+				"\t\"GW_SEQ\" : %d\n\t\"GW_UID\" : \"0x%08X\"\n\t\"POWER\" : %d\n\t\"MOD_SEQ\" : \"0x%08X\"\n\t\"MOD_SN\" : \"0x%08X\"\n\t\"SENSOR\" : \"0x%08X\"\n\t\"JP4_MODE\" : %d\n\t\"JP5_MODE\" : %d\n\t\"JP4_STATE\" : \"%s\"\n\t\"JP5_STATE\" : \"%s\"\n\t\"JP4_ALARM\" : \"%s\"\n\t\"JP5_ALARM\" : \"%s\"\n}\n"
+			,seq++,uid,data.input_signal_power,data.seq_number,data.serial_number,data.data[0],(data.data[0]&0x00FF0000)>>16,(data.data[0]&0xFF000000)>>24,
+			data.data[0]&0x00000100 ? "ON": "OFF",data.data[0]&0x00000200 ? "ON": "OFF",data.data[0]&0x00000001 ? "ON": "OFF",data.data[0]&0x00000002 ? "ON": "OFF");
+*/
+		paramsQOS1.payloadLen = strlen(cPayload);
+		rc = aws_iot_mqtt_publish(&client, TOPIC, strlen(TOPIC), &paramsQOS1);
+		if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
+			ESP_LOGW(TAG, "QOS1 publish ack not received.");
+//            	rc = SUCCESS;
+		}
+		else ESP_LOGI(TAG,"Published to %s:\n%s",TOPIC,cPayload);
+    } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
+}
+
+
 
 static void s2lp_getdata()
 {
@@ -731,7 +845,7 @@ static void s2lp_wait()
 		{
 			if(wifi_prepare()==ESP_OK)
 			{
-				send_to_cloud1(true);
+				send_to_cloud();
 				update_table(data.serial_number,data.seq_number,i0);
 			}
 			else ESP_LOGE("s2lp_wait","Failed to send - no connection");
@@ -944,12 +1058,24 @@ static void system_init()
 	init_uart0();
 	initialize_nvs();
 	get_certs();
-	if(pCert==NULL && write_cert_to_nvs("CERT",(char*)certificate_pem_crt_start, certificate_pem_crt_end-certificate_pem_crt_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start-1);
-	if(pRoot==NULL && write_cert_to_nvs("ROOT",(char*)aws_root_ca_pem_start, aws_root_ca_pem_end-aws_root_ca_pem_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start-1);
-	if(pKey==NULL && write_cert_to_nvs("KEY",(char*)private_pem_key_start, private_pem_key_end-private_pem_key_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start-1);
+	if(pCert==NULL)
+	{
+		if(write_cert_to_nvs("CERT",(char*)certificate_pem_crt_start, certificate_pem_crt_end-certificate_pem_crt_start, str_md5))
+			ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start-1);
+		else pCert=(char*)certificate_pem_crt_start;
+	}
+	if(pRoot==NULL)
+	{
+		if(write_cert_to_nvs("ROOT",(char*)aws_root_ca_pem_start, aws_root_ca_pem_end-aws_root_ca_pem_start, str_md5))
+			ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start-1);
+		else pRoot=(char*)aws_root_ca_pem_start;
+	}
+	if(pKey==NULL)
+	{
+		if(write_cert_to_nvs("KEY",(char*)private_pem_key_start, private_pem_key_end-private_pem_key_start, str_md5))
+			ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start-1);
+		else pKey=(char*)private_pem_key_start;
+	}
 	S2LPSpiInit();
 }
 
