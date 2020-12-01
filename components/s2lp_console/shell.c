@@ -223,7 +223,7 @@ int write_cert_to_nvs(char* cert, char* data, int len,char* str_md5)
 		strcat(key_name,cert);
 		if(set_cert(cert,data,len)==ESP_OK)
 		{
-			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len);
+			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len-1);
 			if(set_value_in_nvs(key_name,str_md5)!=ESP_OK) return -2;
 			ESP_LOGI(__func__,"certificate type=%s %s = %s",cert,key_name,str_md5);
 		}
@@ -245,17 +245,22 @@ static int getcert(console_type con, char* cert)
 	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
 	{
 		char* data=(char*)malloc(4096);
-		send_chars(con, "Sent certificate or key, at the end please press Ctrl-Z...\n");
+		send_chars(con, "Please wait 1s, then sent certificate or key, at the end press Ctrl-Z...\n");
 		timer4_expired[con]=0;
 		TimerHandle_t Timer4= con==1 ? xTimerCreate("Timer41",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback1) : xTimerCreate("Timer40",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback0);
 		xTimerStart(Timer4,0);
 		z[con].gError=0;
+		empty_RXbuffer(con);
 		do
 		{
 			while(!timer4_expired[con] && !EUSART1_is_rx_ready(con)) vTaskDelay(1/portTICK_RATE_MS);
 			c=EUSART1_Read(con);
 			if(c=='\xff') continue;
-			if(c==0x1a) break;
+			if( c==0x1a || c==0x00 )
+			{
+				data[len++]=0;
+				break;
+			}
 //			if(c=='\n') EUSART1_Write('!');
 //			if(c=='\r') EUSART1_Write('?');
 			EUSART1_Write(con,c);

@@ -67,10 +67,13 @@ static volatile uint8_t wifi_stopped;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
+extern const uint16_t aws_root_ca_pem_length asm("aws_root_ca_pem_length");
 extern const uint8_t certificate_pem_crt_start[] asm("_binary_certificate_pem_crt_start");
 extern const uint8_t certificate_pem_crt_end[] asm("_binary_certificate_pem_crt_end");
+extern const uint16_t certificate_pem_crt_length asm("certificate_pem_crt_length");
 extern const uint8_t private_pem_key_start[] asm("_binary_private_pem_key_start");
 extern const uint8_t private_pem_key_end[] asm("_binary_private_pem_key_end");
+extern const uint16_t private_pem_key_length asm("private_pem_key_length");
 /**
  * @brief Default MQTT HOST URL is pulled from the aws_iot_config.h
  */
@@ -489,9 +492,10 @@ void send_to_cloud1(bool shadow)
     		mqttInitParams.pHostURL = HostAddress;
     		mqttInitParams.port = AWS_IOT_MQTT_PORT;
 
-    		mqttInitParams.pRootCALocation = pRoot==NULL ? (const char *)aws_root_ca_pem_start : pRoot;
-    		mqttInitParams.pDeviceCertLocation = pCert==NULL ? (const char *)certificate_pem_crt_start : pCert;
-    		mqttInitParams.pDevicePrivateKeyLocation = pKey==NULL ? (const char *)private_pem_key_start : pKey;
+    		get_certs();
+    		mqttInitParams.pRootCALocation = pRoot;
+    		mqttInitParams.pDeviceCertLocation = pCert;
+    		mqttInitParams.pDevicePrivateKeyLocation = pKey;
 
     		mqttInitParams.mqttCommandTimeout_ms = 20000;
     		mqttInitParams.tlsHandshakeTimeout_ms = 5000;
@@ -941,11 +945,11 @@ static void system_init()
 	initialize_nvs();
 	get_certs();
 	if(pCert==NULL && write_cert_to_nvs("CERT",(char*)certificate_pem_crt_start, certificate_pem_crt_end-certificate_pem_crt_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start);
+		ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start-1);
 	if(pRoot==NULL && write_cert_to_nvs("ROOT",(char*)aws_root_ca_pem_start, aws_root_ca_pem_end-aws_root_ca_pem_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start);
+		ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start-1);
 	if(pKey==NULL && write_cert_to_nvs("KEY",(char*)private_pem_key_start, private_pem_key_end-private_pem_key_start, str_md5))
-		ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start);
+		ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start-1);
 	S2LPSpiInit();
 }
 
