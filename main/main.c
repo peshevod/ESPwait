@@ -52,18 +52,18 @@ static uint8_t* data0;
 static int16_t i0;
 //static uint8_t* data2;
 static const char* TAG = "ESPwait";
-static const char* TAG1 = "SendToCloud";
 char buf[MAX_MESSAGE_SIZE];
 char mes1[MAX_MESSAGE_SIZE];
 char mes2[MAX_MESSAGE_SIZE];
 uint8_t con,mqtt_con,aws_con;
 tcpip_adapter_if_t ifindex;
-static input_data_t mes,data;
+static input_data_t data;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
 static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
 static volatile uint8_t ready_to_send=0;
 static volatile uint8_t wifi_stopped;
+static uint8_t only_timer_wakeup=0;
 
 extern const uint8_t aws_root_ca_pem_start[] asm("_binary_aws_root_ca_pem_start");
 extern const uint8_t aws_root_ca_pem_end[] asm("_binary_aws_root_ca_pem_end");
@@ -101,6 +101,11 @@ static EventGroupHandle_t s_wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 esp_netif_t* wifi_interface;
+AWS_IoT_Client client;
+extern char* pCert;
+extern char* pRoot;
+extern char* pKey;
+
 
 
 static void initialize_nvs()
@@ -138,26 +143,6 @@ void init_uart0()
     data0 = (uint8_t *) malloc(BUF_SIZE);
 }
 
-
-static void IRAM_ATTR s2lp_intr_handler(void* arg)
-{
-	input_data_t data_in;
-	S2LPTimerLdcIrqWa(S_ENABLE);
-	S2LPGpioIrqGetStatus(&xIrqStatus);
-    if(xIrqStatus.RX_DATA_READY)
-    {
-        //Get the RX FIFO size
-        uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
-        //Read the RX FIFO
-        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
-        //Flush the RX FIFO
-        S2LPCmdStrobeFlushRxFifo();
-        data_in.input_signal_power=S2LPRadioGetRssidBm();
-        S2LPCmdStrobeSleep();
-        xQueueSendFromISR(s2lp_evt_queue,&data_in,0);
-    }
-    S2LPTimerLdcIrqWa(S_DISABLE);
-}
 
 void test_gpio(void)
 {
@@ -208,7 +193,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     	}
     	else
    		{
-   			tcpip_adapter_stop(ifindex);
     		ESP_LOGI("wifi handler","wifi disconnected");
     		ready_to_send=0;
    		}
@@ -238,29 +222,32 @@ static void wifi_handlers()
 
 static esp_err_t wifi_prepare()
 {
-	ready_to_send=0;
-	wifi_stopped=1;
 	const uint16_t retries=1000;
 	uint16_t retry=retries;
-	wifi_handlers();
-    esp_netif_init();
-    wifi_interface=esp_netif_create_default_wifi_sta();
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
-    get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
-    get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
-    ESP_LOGI(__func__,"SSID=%s PASSWD=%s",sta_config.sta.ssid,sta_config.sta.password);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
-    con=1;
-    ESP_ERROR_CHECK( esp_wifi_start() );
-    ESP_ERROR_CHECK( esp_wifi_connect() );
-    while(!ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+	if(ready_to_send) return ESP_OK;
+	if(wifi_stopped)
+	{
+		wifi_handlers();
+		esp_netif_init();
+		wifi_interface=esp_netif_create_default_wifi_sta();
+		wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+		esp_wifi_init(&cfg);
+		get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
+		get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
+		ESP_LOGI(__func__,"SSID=%s PASSWD=%s",sta_config.sta.ssid,sta_config.sta.password);
+		ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+		ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
+		con=1;
+		ESP_ERROR_CHECK( esp_wifi_start() );
+	}
+	else ESP_ERROR_CHECK( esp_wifi_connect() );
+    while(!ready_to_send && retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
     if(ready_to_send)
     {
-    	esp_netif_dns_info_t dns;
-    	esp_netif_get_dns_info(wifi_interface,ESP_NETIF_DNS_MAIN,&dns);
-    	ESP_LOGI("wifi_prepare","DNS=%s",ip4addr_ntoa((const ip4_addr_t*)(&(dns.ip))));
+//    	esp_netif_dns_info_t dns;
+//    	esp_netif_get_dns_info(wifi_interface,ESP_NETIF_DNS_MAIN,&dns);
+//    	ESP_LOGI("wifi_prepare","DNS=%s",ip4addr_ntoa((const ip4_addr_t*)(&(dns.ip))));
+    	ESP_LOGI("wifi_prepare","Ready to send");
     	return ESP_OK;
     }
 	ESP_LOGE("wifi_prepare","Cannot connect to %s with %s",sta_config.sta.ssid,sta_config.sta.password);
@@ -274,11 +261,11 @@ static void wifi_unprepare()
 	const uint16_t retries=300;
 	uint16_t retry=retries;
 	esp_wifi_disconnect();
-    while(ready_to_send || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+    while(ready_to_send && retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
 	ESP_LOGI("wifi_unprepare","wifi disconnected");
 	esp_wifi_stop();
     retry=retries;
-    while(!wifi_stopped || retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
+    while(!wifi_stopped && retry-->0) vTaskDelay(10/portTICK_PERIOD_MS);
 	ESP_LOGI("wifi_unprepare","wifi stopped");
 	esp_wifi_deinit();
 	ESP_LOGI("wifi_unprepare","wifi deinited");
@@ -291,7 +278,7 @@ static void wifi_unprepare()
     vEventGroupDelete(s_wifi_event_group);
 }
 
-static int16_t test_update_table(uint32_t ser, uint32_t seq)
+static int16_t test_update_table(uint32_t ser, uint32_t seq_number)
 {
 	uint16_t n=table.n_of_rows;
 	int16_t i;
@@ -299,43 +286,15 @@ static int16_t test_update_table(uint32_t ser, uint32_t seq)
 	{
 		if(ser==table.row[i].serial_number) break;
 	}
-	if( i==n || table.row[i].seq!=(uint16_t)(seq&0xffff)) return i;
+	if( i==n || table.row[i].seq!=(uint16_t)(seq_number&0xffff)) return i;
 	else return -1;
 }
 
-static void update_table(uint32_t ser, uint32_t seq,int16_t i)
+static void update_table(uint32_t ser, uint32_t seq_number,int16_t i)
 {
 	table.row[i].serial_number=ser;
-	table.row[i].seq=(uint16_t)(seq&0xffff);
+	table.row[i].seq=(uint16_t)(seq_number&0xffff);
 	if(i>=table.n_of_rows) table.n_of_rows++;
-}
-
-static bool shadowUpdateInProgress;
-
-void ShadowUpdateStatusCallback(const char *pThingName, ShadowActions_t action, Shadow_Ack_Status_t status,
-                                const char *pReceivedJsonDocument, void *pContextData) {
-    IOT_UNUSED(pThingName);
-    IOT_UNUSED(action);
-    IOT_UNUSED(pReceivedJsonDocument);
-    IOT_UNUSED(pContextData);
-
-    shadowUpdateInProgress = false;
-
-    if(SHADOW_ACK_TIMEOUT == status) {
-        ESP_LOGE(TAG, "Update timed out");
-    } else if(SHADOW_ACK_REJECTED == status) {
-        ESP_LOGE(TAG, "Update rejected");
-    } else if(SHADOW_ACK_ACCEPTED == status) {
-        ESP_LOGI(TAG, "Update accepted");
-    }
-}
-
-void iot_subscribe_callback_handler(AWS_IoT_Client *pClient, char *topicName, uint16_t topicNameLen,
-                                    IoT_Publish_Message_Params *params, void *pData)
-{
-	char* TAG="iot_subscribe_callback_handler";
-	ESP_LOGI(TAG, "Subscribe callback");
-    ESP_LOGI(TAG, "%.*s\t%.*s", topicNameLen, topicName, (int) params->payloadLen, (char *)params->payload);
 }
 
 void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
@@ -361,316 +320,6 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
     }
 }
 
-AWS_IoT_Client client;
-IoT_Client_Init_Params mqttInitParams;
-IoT_Client_Connect_Params connectParams;
-IoT_Publish_Message_Params paramsQOS0;
-IoT_Publish_Message_Params paramsQOS1;
-const char *TOPIC = "espwait/sensor";
-
-ShadowInitParameters_t sp;
-ShadowConnectParameters_t scp;
-
-jsonStruct_t seq_h, power_h,modseq_h,modsn_h,mod_jp4_h,mod_jp5_h,state_jp4_h,state_jp5_h,alarm_jp4_h,alarm_jp5_h;
-uint8_t mod_jp4,mod_jp5;
-bool state_jp4,state_jp5,alarm_jp4,alarm_jp5;
-char ThingName[20];
-
-
-extern char* pCert;
-extern char* pRoot;
-extern char* pKey;
-
-void init_certs(void)
-{
-	get_certs();
-}
-
-char ShadowName[16];
-char* pShadowName;
-
-void send_to_cloud1(bool shadow)
-{
-    IoT_Error_t rc = FAILURE;
-    char cPayload[256];
-
-    init_certs();
-    if(shadow)
-    {
-        seq_h.cb = NULL;
-        seq_h.pKey = "GW_SEQ";
-        seq_h.pData = &seq;
-        seq_h.type = SHADOW_JSON_UINT32;
-        seq_h.dataLength = sizeof(uint32_t);
-
-        power_h.cb = NULL;
-        power_h.pKey = "POWER";
-        power_h.pData = &(data.input_signal_power);
-        power_h.type = SHADOW_JSON_INT32;
-        power_h.dataLength = sizeof(int32_t);
-
-        modseq_h.cb = NULL;
-        modseq_h.pKey = "MOD_SEQ";
-        modseq_h.pData = &(data.seq_number);
-        modseq_h.type = SHADOW_JSON_UINT16;
-        modseq_h.dataLength = sizeof(uint16_t);
-
-        modsn_h.cb = NULL;
-        modsn_h.pKey = "MOD_SN";
-        modsn_h.pData = &(data.serial_number);
-        modsn_h.type = SHADOW_JSON_UINT32;
-        modsn_h.dataLength = sizeof(uint32_t);
-        sprintf(ShadowName,"%08x",data.serial_number);
-        pShadowName=ShadowName;
-
-        mod_jp4_h.cb = NULL;
-        mod_jp4_h.pKey = "MOD_JP4";
-        mod_jp4_h.pData = &mod_jp4;
-        mod_jp4_h.type = SHADOW_JSON_UINT8;
-        mod_jp4_h.dataLength = sizeof(uint8_t);
-
-        mod_jp5_h.cb = NULL;
-        mod_jp5_h.pKey = "MOD_JP5";
-        mod_jp5_h.pData = &mod_jp5;
-        mod_jp5_h.type = SHADOW_JSON_UINT8;
-        mod_jp5_h.dataLength = sizeof(uint8_t);
-
-        state_jp4_h.cb = NULL;
-        state_jp4_h.pKey = "STATE_JP4";
-        state_jp4_h.pData = &state_jp4;
-        state_jp4_h.type = SHADOW_JSON_BOOL;
-        state_jp4_h.dataLength = sizeof(bool);
-
-        state_jp5_h.cb = NULL;
-        state_jp5_h.pKey = "STATE_JP5";
-        state_jp5_h.pData = &state_jp5;
-        state_jp5_h.type = SHADOW_JSON_BOOL;
-        state_jp5_h.dataLength = sizeof(bool);
-
-        alarm_jp4_h.cb = NULL;
-        alarm_jp4_h.pKey = "ALARM_JP4";
-        alarm_jp4_h.pData = &alarm_jp4;
-        alarm_jp4_h.type = SHADOW_JSON_BOOL;
-        alarm_jp4_h.dataLength = sizeof(bool);
-
-        alarm_jp5_h.cb = NULL;
-        alarm_jp5_h.pKey = "ALARM_JP5";
-        alarm_jp5_h.pData = &alarm_jp5;
-        alarm_jp5_h.type = SHADOW_JSON_BOOL;
-        alarm_jp5_h.dataLength = sizeof(bool);
-
-    }
-
-    if(!aws_con)
-    {
-
-
-    	ESP_LOGI(TAG, "AWS IoT SDK Version %d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_TAG);
-
-    	if(!shadow)
-    	{
-     		mqttInitParams = iotClientInitParamsDefault;
-    		mqttInitParams.enableAutoReconnect = false; // We enable this later below
-    		mqttInitParams.pHostURL = HostAddress;
-    		mqttInitParams.port = AWS_IOT_MQTT_PORT;
-
-    		get_certs();
-    		mqttInitParams.pRootCALocation = pRoot;
-    		mqttInitParams.pDeviceCertLocation = pCert;
-    		mqttInitParams.pDevicePrivateKeyLocation = pKey;
-
-    		mqttInitParams.mqttCommandTimeout_ms = 20000;
-    		mqttInitParams.tlsHandshakeTimeout_ms = 5000;
-    		mqttInitParams.isSSLHostnameVerify = true;
-    		mqttInitParams.disconnectHandler = disconnectCallbackHandler;
-    		mqttInitParams.disconnectHandlerData = NULL;
-
-    		rc = aws_iot_mqtt_init(&client, &mqttInitParams);
-    		if(SUCCESS != rc) {
-    			ESP_LOGE(TAG, "aws_iot_mqtt_init returned error : %d ", rc);
-    			abort();
-    		}
-    	}
-    	else
-    	{
-
-    		sp = ShadowInitParametersDefault;
-    		sp.pHost = HostAddress;
-            sp.port = AWS_IOT_MQTT_PORT;
-
-            sp.pClientCRT = pCert==NULL ? (const char *)certificate_pem_crt_start : pCert;
-            sp.pClientKey = pKey==NULL ? (const char *)private_pem_key_start : pKey;
-            sp.pRootCA = pRoot==NULL ? (const char *)aws_root_ca_pem_start : pRoot;
-
-            sp.enableAutoReconnect = false;
-            sp.disconnectHandler = disconnectCallbackHandler;
-
-            ESP_LOGI(TAG, "Shadow Init");
-            rc = aws_iot_shadow_init(&client, &sp);
-            if(SUCCESS != rc) {
-            	ESP_LOGE(TAG, "aws_iot_shadow_init returned error %d, aborting...", rc);
-            	abort();
-            }
-    	}
-
-    	if(!shadow)
-    	{
-         	connectParams = iotClientConnectParamsDefault;
-    		connectParams.keepAliveIntervalInSec = 10;
-    		connectParams.isCleanSession = true;
-    		connectParams.MQTTVersion = MQTT_3_1_1;
-    		/* Client ID is set in the menuconfig of the example */
-    		connectParams.pClientID = "721730703209";
-    		connectParams.clientIDLen = (uint16_t) strlen("721730703209");
-    		connectParams.isWillMsgPresent = false;
-
-    		ESP_LOGI(TAG, "Connecting to AWS...");
-    		mqtt_con=1;
-    		do {
-    			rc = aws_iot_mqtt_connect(&client, &connectParams);
-    			if(SUCCESS != rc) {
-    				ESP_LOGE(TAG, "Error(%d) connecting to %s:%d", rc, mqttInitParams.pHostURL, mqttInitParams.port);
-    				vTaskDelay(1000 / portTICK_RATE_MS);
-    			}
-    		} while(SUCCESS != rc);
-    		aws_con=1;
-    	}
-    	else
-    	{
-    		scp = ShadowConnectParametersDefault;
-    		sprintf(ThingName,"espwait-%08x",uid);
-//    		sprintf(ThingName,"GW1");
-    		scp.pMyThingName=ThingName;
-    	    scp.pMqttClientId = "721730703209";
-    	    scp.mqttClientIdLen = (uint16_t) strlen("721730703209");
-
-    	    ESP_LOGI(TAG, "Shadow Connecting...");
-    		mqtt_con=1;
-    		do {
-    			rc = aws_iot_shadow_connect(&client, &scp);
-    			if(SUCCESS != rc) {
-    				ESP_LOGE(TAG, "aws_iot_shadow_connect returned error %d, aborting...", rc);
-    			}
-    		} while(SUCCESS != rc);
-    	    ESP_LOGI(TAG, "Shadow Connected");
-    		aws_con=1;
-    	}
-
-
-
-    		/*
-     * Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
-     *  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
-     *  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
-     */
-    	if(!shadow)
-    	{
-    		rc = aws_iot_mqtt_autoreconnect_set_status(&client, true);
-    		if(SUCCESS != rc) {
-    			ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d", rc);
-    			abort();
-    		}
-    	}
-    	else
-    	{
-    	    /*
-    	     * Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
-    	     *  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
-    	     *  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
-    	     */
-    	    rc = aws_iot_shadow_set_autoreconnect_status(&client, true);
-    	    if(SUCCESS != rc) {
-    	        ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d, aborting...", rc);
-    	        abort();
-    	    }
-    	}
-    }
-    	/*ESP_LOGI(TAG, "Subscribing...");
-    	rc = aws_iot_mqtt_subscribe(&client, TOPIC, TOPIC_LEN, QOS0, iot_subscribe_callback_handler, NULL);
-    	if(SUCCESS != rc) {
-    		ESP_LOGE(TAG, "Error subscribing : %d ", rc);
-    		abort();
-    	}*/
-
-//    	sprintf(cPayload, "%s : %d ", "hello from SDK", i);
-
-    	/*paramsQOS0.qos = QOS0;
-    	paramsQOS0.payload = (void *) cPayload;
-    	paramsQOS0.isRetained = 0;*/
-
-    paramsQOS1.qos = QOS1;
-    paramsQOS1.payload = (void *) cPayload;
-    paramsQOS1.isRetained = 0;
-
-    do {
-
-/*    		//Max time the yield function will wait for read messages
-    		rc = aws_iot_mqtt_yield(&client, 100);
-    		if(NETWORK_ATTEMPTING_RECONNECT == rc) {
-    			// If the client is attempting to reconnect we will skip the rest of the loop.
-    			continue;
-    		}
-
-        ESP_LOGI(TAG, "Stack remaining for task '%s' is %d bytes", pcTaskGetTaskName(NULL), uxTaskGetStackHighWaterMark(NULL));
-        vTaskDelay(1000 / portTICK_RATE_MS);
-        sprintf(cPayload, "%s : %d ", "hello from ESP32 (QOS0)", i++);
-        paramsQOS0.payloadLen = strlen(cPayload);
-        rc = aws_iot_mqtt_publish(&client, TOPIC, TOPIC_LEN, &paramsQOS0);
-
-        sprintf(cPayload, "%s : %d ", "hello from ESP32 (QOS1)", i++);
-        paramsQOS1.payloadLen = strlen(cPayload);
-        rc = aws_iot_mqtt_publish(&client, TOPIC, TOPIC_LEN, &paramsQOS1);
-        if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
-            ESP_LOGW(TAG, "QOS1 publish ack not received.");
-            rc = SUCCESS;
-        }*/
-//    	ESP_LOGI("send_t0_cloud","UID=%08X",uid);
-    	if(!shadow)
-    	{
-    		sprintf(cPayload, "{\n\t\"GW_SEQ\" : %d\n\t\"GW_UID\" : \"0x%08X\"\n\t\"POWER\" : %d\n\t\"MOD_SEQ\" : \"0x%08X\"\n\t\"MOD_SN\" : \"0x%08X\"\n\t\"SENSOR\" : \"0x%08X\"\n\t\"JP4_MODE\" : %d\n\t\"JP5_MODE\" : %d\n\t\"JP4_STATE\" : \"%s\"\n\t\"JP5_STATE\" : \"%s\"\n\t\"JP4_ALARM\" : \"%s\"\n\t\"JP5_ALARM\" : \"%s\"\n}\n"
-    			,seq++,uid,data.input_signal_power,data.seq_number,data.serial_number,data.data[0],(data.data[0]&0x00FF0000)>>16,(data.data[0]&0xFF000000)>>24,
-				data.data[0]&0x00000100 ? "ON": "OFF",data.data[0]&0x00000200 ? "ON": "OFF",data.data[0]&0x00000001 ? "ON": "OFF",data.data[0]&0x00000002 ? "ON": "OFF");
-    		paramsQOS1.payloadLen = strlen(cPayload);
-    		rc = aws_iot_mqtt_publish(&client, TOPIC, strlen(TOPIC), &paramsQOS1);
-    		if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
-    			ESP_LOGW(TAG, "QOS1 publish ack not received.");
-//            	rc = SUCCESS;
-    		}
-    		else ESP_LOGI(TAG,"Published to %s:\n%s",TOPIC,cPayload);
-    	}
-    	else
-    	{
-            mod_jp4=(data.data[0]&0x00FF0000)>>16;
-            mod_jp5=(data.data[0]&0xFF000000)>>24;
-            state_jp4=data.data[0]&0x00000100 ? true : false;
-            state_jp5=data.data[0]&0x00000200 ? true : false;
-            alarm_jp4=data.data[0]&0x00000001 ? true : false;
-            alarm_jp5=data.data[0]&0x00000002 ? true : false;
-
-            rc = aws_iot_shadow_init_json_document(JsonDocumentBuffer, sizeOfJsonDocumentBuffer);
-            if(SUCCESS == rc) {
-        	    ESP_LOGI(TAG, "JsonDocumentBuffer inited\n%s", JsonDocumentBuffer);
-                rc = aws_iot_shadow_add_reported(JsonDocumentBuffer, sizeOfJsonDocumentBuffer,10,&seq_h,&power_h,&modseq_h,&modsn_h,&mod_jp4_h,&mod_jp5_h,&state_jp4_h,&state_jp5_h,&alarm_jp4_h,&alarm_jp5_h);
-                if(SUCCESS == rc) {
-                	ESP_LOGI(TAG, "JsonDocumentBuffer add reported\n%s", JsonDocumentBuffer);
-                    rc = aws_iot_finalize_json_document(JsonDocumentBuffer, sizeOfJsonDocumentBuffer);
-                    if(SUCCESS == rc) {
-                        ESP_LOGI(TAG, "Update Shadow: %s", JsonDocumentBuffer);
-                        rc = aws_iot_shadow_update(&client, scp.pMyThingName, JsonDocumentBuffer,
-                                                   ShadowUpdateStatusCallback, NULL, 4, true);
-                        if(rc==SUCCESS) ESP_LOGI(TAG, "Updated Shadow to device %s: %s",scp.pMyThingName, JsonDocumentBuffer);
-                        shadowUpdateInProgress = true;
-                    }
-                }
-            }
-
-    	}
-    	seq++;
-    } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
-
-//     ESP_LOGE(TAG, "An error occurred in the main loop.");
-//    abort();
-}
 
 static void add_to_Payload(char* Payload, char* key, char* value, int quotes)
 {
@@ -680,18 +329,19 @@ static void add_to_Payload(char* Payload, char* key, char* value, int quotes)
 	strcat(Payload,str);
 }
 
+
+
 static void send_to_cloud()
 {
 	char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-west-2.amazonaws.com";
 	char* clientID="721730703209";
-	AWS_IoT_Client client;
 	IoT_Client_Init_Params mqttInitParams;
 	IoT_Client_Connect_Params connectParams;
-	IoT_Publish_Message_Params paramsQOS0;
+//	IoT_Publish_Message_Params paramsQOS0;
 	IoT_Publish_Message_Params paramsQOS1;
     IoT_Error_t rc = FAILURE;
-    char cPayload[256];
     char* TAG="send_to_cloud";
+    const char *TOPIC = "espwait/sensor";
 
 
     if(!aws_con)
@@ -750,6 +400,7 @@ static void send_to_cloud()
 			abort();
 		}
     }
+	char* cPayload=(char*)malloc(1024);
     paramsQOS1.qos = QOS1;
     paramsQOS1.payload = (void *) cPayload;
     paramsQOS1.isRetained = 0;
@@ -762,16 +413,18 @@ static void send_to_cloud()
 		}
 		char str[64];
 		strcpy(cPayload,"{\n");
-		sprintf(str,"%d",seq++);
-		add_to_Payload(cPayload,"GW_SEQ",str,0);
 		sprintf(str,"0x%08X",uid);
-		add_to_Payload(cPayload,"GW_UID",str,1);
+		add_to_Payload(cPayload,"GATEWAY_UID",str,1);
+		sprintf(str,"%d",time0);
+		add_to_Payload(cPayload,"GATEWAY_BOOT_TIME",str,0);
+		sprintf(str,"%d",seq++);
+		add_to_Payload(cPayload,"GATEWAY_SEQUENCE",str,0);
 		sprintf(str,"%d",data.input_signal_power);
 		add_to_Payload(cPayload,"POWER",str,0);
-		sprintf(str,"%d",data.seq_number);
-		add_to_Payload(cPayload,"MOD_SEQ",str,0);
 		sprintf(str,"0x%08X",data.serial_number);
-		add_to_Payload(cPayload,"MOD_SN",str,1);
+		add_to_Payload(cPayload,"MODEM_SERIAL_NUMBER",str,1);
+		sprintf(str,"%d",data.seq_number&0xFFFF);
+		add_to_Payload(cPayload,"MODEM_SEQUENCE",str,0);
 		sprintf(str,"0x%08X",data.data[0]);
 		add_to_Payload(cPayload,"SENSOR",str,1);
 		sprintf(str,"%d",(data.data[0]&0x00FF0000)>>16);
@@ -788,11 +441,6 @@ static void send_to_cloud()
 		add_to_Payload(cPayload,"JP5_ALARM",str,1);
 		strcat(cPayload,"}\n");
 
-/*				"{\n \
-				"\t\"GW_SEQ\" : %d\n\t\"GW_UID\" : \"0x%08X\"\n\t\"POWER\" : %d\n\t\"MOD_SEQ\" : \"0x%08X\"\n\t\"MOD_SN\" : \"0x%08X\"\n\t\"SENSOR\" : \"0x%08X\"\n\t\"JP4_MODE\" : %d\n\t\"JP5_MODE\" : %d\n\t\"JP4_STATE\" : \"%s\"\n\t\"JP5_STATE\" : \"%s\"\n\t\"JP4_ALARM\" : \"%s\"\n\t\"JP5_ALARM\" : \"%s\"\n}\n"
-			,seq++,uid,data.input_signal_power,data.seq_number,data.serial_number,data.data[0],(data.data[0]&0x00FF0000)>>16,(data.data[0]&0xFF000000)>>24,
-			data.data[0]&0x00000100 ? "ON": "OFF",data.data[0]&0x00000200 ? "ON": "OFF",data.data[0]&0x00000001 ? "ON": "OFF",data.data[0]&0x00000002 ? "ON": "OFF");
-*/
 		paramsQOS1.payloadLen = strlen(cPayload);
 		rc = aws_iot_mqtt_publish(&client, TOPIC, strlen(TOPIC), &paramsQOS1);
 		if (rc == MQTT_REQUEST_TIMEOUT_ERROR) {
@@ -800,66 +448,30 @@ static void send_to_cloud()
 //            	rc = SUCCESS;
 		}
 		else ESP_LOGI(TAG,"Published to %s:\n%s",TOPIC,cPayload);
+		free(cPayload);
     } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
 }
 
 
 
-static void s2lp_getdata()
+static void IRAM_ATTR s2lp_intr_handler(void* arg)
 {
 	input_data_t data_in;
 	S2LPTimerLdcIrqWa(S_ENABLE);
-   	ESP_LOGI("s2lp_getdata","1");
-    //Get the RX FIFO size
-    uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
-   	ESP_LOGI("s2lp_getdata","3");
-    //Read the RX FIFO
-    S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
-    ESP_LOGI("s2lp_getdata","4");
-    data_in.input_signal_power=S2LPRadioGetRssidBm();
-    ESP_LOGI("s2lp_getdata","6, %d dbm",data_in.input_signal_power);
-    //Flush the RX FIFO
-    S2LPCmdStrobeFlushRxFifo();
-    ESP_LOGI("s2lp_getdata","5");
-    xQueueSend(s2lp_evt_queue,&data_in,0);
-    ESP_LOGI("s2lp_getdata","7");
-    S2LPCmdStrobeSleep();
-    ESP_LOGI("s2lp_getdata","8");
+	S2LPGpioIrqGetStatus(&xIrqStatus);
+    if(xIrqStatus.RX_DATA_READY)
+    {
+        //Get the RX FIFO size
+        uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+        //Read the RX FIFO
+        S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
+        //Flush the RX FIFO
+        S2LPCmdStrobeFlushRxFifo();
+        data_in.input_signal_power=S2LPRadioGetRssidBm();
+        S2LPCmdStrobeSleep();
+        xQueueSendFromISR(s2lp_evt_queue,&data_in,0);
+    }
     S2LPTimerLdcIrqWa(S_DISABLE);
-   	ESP_LOGI("s2lp_getdata","9");
-}
-
-static void s2lp_wait()
-{
-    ready_to_send=0;
-    aws_con=0;
-    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
-    s2lp_getdata();
-   	ESP_LOGI("s2lp_wait1","got data from s2lp");
-    xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,0);
-	while(xQueueReceive(s2lp_evt_queue,&data,500/portTICK_PERIOD_MS))
-	{
-        ESP_LOGI("s2lp_getdata","REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-		i0=test_update_table(data.serial_number,data.seq_number);
-		if(i0!=-1)
-		{
-			if(wifi_prepare()==ESP_OK)
-			{
-				send_to_cloud();
-				update_table(data.serial_number,data.seq_number,i0);
-			}
-			else ESP_LOGE("s2lp_wait","Failed to send - no connection");
-		}
-		else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
-	}
-	if(mqtt_con)
-	{
-	    mqtt_con=0;
-	    IoT_Error_t rc=aws_iot_mqtt_disconnect(&client);
-	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
-	    aws_con=0;
-	}
-	wifi_unprepare();
 }
 
 static void config_isr0(void)
@@ -889,6 +501,71 @@ static void config_isr0(void)
     ESP_LOGI(TAG,"handler added to isr service");
 }
 
+static void s2lp_rec_start2(void *arg)
+{
+//    ESP_LOGI("s2lp_rec_start2","before config_isr0 made");
+	config_isr0();
+    ESP_LOGI("s2lp_rec_start2","config_isr0 made");
+    while(1) vTaskDelay(60000);
+}
+
+// Send data to queue an rearm receive
+
+static void s2lp_getdata()
+{
+	input_data_t data_in;
+	S2LPTimerLdcIrqWa(S_ENABLE);
+//   	ESP_LOGI("s2lp_getdata","1");
+    //Get the RX FIFO size
+    uint8_t cRxData = S2LPFifoReadNumberBytesRxFifo();
+//   	ESP_LOGI("s2lp_getdata","3");
+    //Read the RX FIFO
+    S2LPSpiReadFifo(cRxData, (uint8_t*)(&(data_in.seq_number)));
+//    ESP_LOGI("s2lp_getdata","4");
+    data_in.input_signal_power=S2LPRadioGetRssidBm();
+//    ESP_LOGI("s2lp_getdata","6, %d dbm",data_in.input_signal_power);
+    //Flush the RX FIFO
+    S2LPCmdStrobeFlushRxFifo();
+//    ESP_LOGI("s2lp_getdata","5");
+    xQueueSend(s2lp_evt_queue,&data_in,0);
+//    ESP_LOGI("s2lp_getdata","7");
+    S2LPCmdStrobeSleep();
+//    ESP_LOGI("s2lp_getdata","8");
+    S2LPTimerLdcIrqWa(S_DISABLE);
+//   	ESP_LOGI("s2lp_getdata","9");
+}
+
+static void s2lp_wait()
+{
+    s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
+    s2lp_getdata();
+   	ESP_LOGI("s2lp_wait","got data from s2lp");
+    xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,0);
+	while(xQueueReceive(s2lp_evt_queue,&data,16000/portTICK_PERIOD_MS))
+	{
+        ESP_LOGI("s2lp_getdata","REC: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+		i0=test_update_table(data.serial_number,data.seq_number);
+		if(i0!=-1)
+		{
+			if(wifi_prepare()==ESP_OK)
+			{
+				send_to_cloud();
+				update_table(data.serial_number,data.seq_number,i0);
+			}
+			else ESP_LOGE("s2lp_wait","Failed to send - no connection");
+		}
+		else ESP_LOGI(TAG,"DO NOT SEND: Power: %d dbm 0x%08X 0x%08X 0x%08X\n",data.input_signal_power,data.seq_number,data.serial_number,data.data[0]);
+	}
+	if(mqtt_con)
+	{
+	    mqtt_con=0;
+	    IoT_Error_t rc=aws_iot_mqtt_disconnect(&client);
+	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
+	    aws_con=0;
+	}
+	wifi_unprepare();
+}
+
 static esp_err_t s2lp_start()
 {
 	start_s2lp_console();
@@ -896,7 +573,6 @@ static esp_err_t s2lp_start()
 
     get_value_from_nvs("T", 0, NULL, &mode);
 
-    seq=0;
     if(mode==RECEIVE_MODE) return s2lp_rec_start();
     if(mode==TRANSMIT_MODE)
     {
@@ -961,17 +637,8 @@ static esp_err_t s2lp_rec_start()
     ESP_LOGI(TAG,"s2lp irq Status get");
     S2LPCmdStrobeRx();
     return ESP_OK;
-};
-
-static void s2lp_rec_start2(void *arg)
-{
-    ESP_LOGI("s2lp_rec_start2","before config_isr0 made");
-	config_isr0();
-    ESP_LOGI("s2lp_rec_start2","config_isr0 made");
-    while(1) vTaskDelay(60000);
 }
 
-uint8_t only_timer_wakeup=0;
 
 static void s2lp_trans_start()
 {
@@ -1097,6 +764,10 @@ void app_main(void)
 				if(mode==RECEIVE_MODE)
 				{
 					ESP_LOGI("app_main","RECIEVE MODE");
+					ready_to_send=0;
+					wifi_stopped=1;
+					aws_con=0;
+					mqtt_con=0;
 					s2lp_wait();
 					sleep_time=60000000;
 				}
@@ -1126,7 +797,6 @@ void app_main(void)
 				{
 					if(cw) ESP_LOGI("TRANSMIT MODE ", "CW mode %d",seq);
 					if(pn9) ESP_LOGI("TRANSMIT MODE ", "PN9 mode %d",seq);
-					seq++;
 					sleep_time=60000000;
 					only_timer_wakeup=1;
 				}
@@ -1140,7 +810,6 @@ void app_main(void)
 			}
 			else
 			{
-				seq++;
 				ESP_LOGI("app_main","I am alive %d",seq);
 			}
 			break;
@@ -1150,6 +819,9 @@ void app_main(void)
 			ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
 			S2LPEnterShutdown();
 			S2LPExitShutdown();
+			seq=0;
+			ready_to_send=0;
+			wifi_stopped=1;
 			if(s2lp_start()!=ESP_OK)
 			{
 				vTaskDelay(10000/portTICK_PERIOD_MS);
