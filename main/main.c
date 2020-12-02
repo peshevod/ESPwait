@@ -321,11 +321,11 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
 }
 
 
-static void add_to_Payload(char* Payload, char* key, char* value, int quotes)
+static void add_to_Payload(char* Payload, char* key, char* value, int last)
 {
 	char str[128];
-	if(quotes) sprintf(str,"\t\"%s\" : \"%s\"\n",key,value);
-	else sprintf(str,"\t\"%s\" : %s\n",key,value);
+	if(last) sprintf(str,"\t\"%s\" : \"%s\"\n",key,value);
+	else sprintf(str,"\t\"%s\" : \"%s\",\n",key,value);
 	strcat(Payload,str);
 }
 
@@ -414,29 +414,29 @@ static void send_to_cloud()
 		char str[64];
 		strcpy(cPayload,"{\n");
 		sprintf(str,"0x%08X",uid);
-		add_to_Payload(cPayload,"GATEWAY_UID",str,1);
-		sprintf(str,"%d",time0);
-		add_to_Payload(cPayload,"GATEWAY_BOOT_TIME",str,0);
-		sprintf(str,"%d",seq++);
+		add_to_Payload(cPayload,"GATEWAY_UID",str,0);
+//		sprintf(str,"%d",time0);
+//		add_to_Payload(cPayload,"GATEWAY_BOOT_TIME",str,0);
+		sprintf(str,"%d%08d",time0,seq++);
 		add_to_Payload(cPayload,"GATEWAY_SEQUENCE",str,0);
 		sprintf(str,"%d",data.input_signal_power);
 		add_to_Payload(cPayload,"POWER",str,0);
 		sprintf(str,"0x%08X",data.serial_number);
-		add_to_Payload(cPayload,"MODEM_SERIAL_NUMBER",str,1);
+		add_to_Payload(cPayload,"MODEM_SERIAL_NUMBER",str,0);
 		sprintf(str,"%d",data.seq_number&0xFFFF);
 		add_to_Payload(cPayload,"MODEM_SEQUENCE",str,0);
 		sprintf(str,"0x%08X",data.data[0]);
-		add_to_Payload(cPayload,"SENSOR",str,1);
+		add_to_Payload(cPayload,"SENSOR",str,0);
 		sprintf(str,"%d",(data.data[0]&0x00FF0000)>>16);
 		add_to_Payload(cPayload,"JP4_MODE",str,0);
 		sprintf(str,"%d",(data.data[0]&0xFF000000)>>24);
 		add_to_Payload(cPayload,"JP5_MODE",str,0);
 		sprintf(str,"%s",data.data[0]&0x00000100 ? "ON": "OFF");
-		add_to_Payload(cPayload,"JP4_STATE",str,1);
+		add_to_Payload(cPayload,"JP4_STATE",str,0);
 		sprintf(str,"%s",data.data[0]&0x00000200 ? "ON": "OFF");
-		add_to_Payload(cPayload,"JP5_STATE",str,1);
+		add_to_Payload(cPayload,"JP5_STATE",str,0);
 		sprintf(str,"%s",data.data[0]&0x00000001 ? "ON": "OFF");
-		add_to_Payload(cPayload,"JP4_ALARM",str,1);
+		add_to_Payload(cPayload,"JP4_ALARM",str,0);
 		sprintf(str,"%s",data.data[0]&0x00000002 ? "ON": "OFF");
 		add_to_Payload(cPayload,"JP5_ALARM",str,1);
 		strcat(cPayload,"}\n");
