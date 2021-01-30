@@ -37,7 +37,7 @@ int volatile s2lp_console_timer_expired;
 
 void bt_console()
 {
-    sprintf(server_name,"ESPWAIT-%08X",uid);
+    sprintf(server_name, "ESPWAIT-%08X", uid);
     init_spp_server();
     int k=120;
     while(--k>0 && console_fd==-1)
