@@ -37,6 +37,7 @@
 #include "aws_iot_shadow_interface.h"
 #include "spp_server.h"
 #include "esp_sntp.h"
+
 //#include "bt/host/bluedroid/api/include/api/esp_bt_main.h"
 //#include "soc/rtc.h"
 
@@ -497,7 +498,7 @@ static void config_isr0(void)
     gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
     ESP_LOGI(TAG,"isr service set");
     //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(GPIO_INPUT_IO_0, s2lp_intr_handler, (void*) GPIO_INPUT_IO_0);
+    gpio_isr_handler_add(PIN_NUM_S2LP_GPIO0, s2lp_intr_handler, NULL);
     ESP_LOGI(TAG,"handler added to isr service");
 }
 
@@ -709,12 +710,12 @@ void to_sleep(uint32_t timeout)
 {
 	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
-	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000010,ESP_EXT1_WAKEUP_ALL_LOW);
+	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000001<<PIN_NUM_S2LP_GPIO0,ESP_EXT1_WAKEUP_ALL_LOW);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
 //	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
 //	rtc_gpio_isolate(GPIO_INPUT_IO_0);
-	rtc_gpio_hold_en(PIN_NUM_SDN);
+	rtc_gpio_hold_en(PIN_NUM_S2LP_SDN);
 	esp_deep_sleep_start();
 }
 
@@ -752,7 +753,7 @@ void app_main(void)
 	system_init();
 	uint64_t sleep_time=30000000;
 	trans_sleep=30000000;
-	rtc_gpio_hold_dis(PIN_NUM_SDN);
+	rtc_gpio_hold_dis(PIN_NUM_S2LP_SDN);
 	switch (esp_sleep_get_wakeup_cause()) {
 		// Interrupt from S2LP
 		case ESP_SLEEP_WAKEUP_EXT1:

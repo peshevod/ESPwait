@@ -11,19 +11,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "S2LP_Config.h"
+#include "My_pins.h"
 //#include "MCU_Interface_template.h"
 
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
-
-#define PIN_NUM_MISO 12
-#define PIN_NUM_MOSI 13
-#define PIN_NUM_CLK  14
-#define PIN_NUM_CSN  15
-#define PIN_NUM_SDN	 27
-
 
 #define OP_WRITE        0x00
 #define OP_READ         0x01
