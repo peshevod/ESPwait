@@ -211,31 +211,6 @@ static void Timer4Callback1( TimerHandle_t pxTimer )
 }
 
 
-int write_cert_to_nvs(char* cert, char* data, int len,char* str_md5)
-{
-	char key_name[16];
-	unsigned char md5[16];
-	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
-	{
-		if(mbedtls_md5_ret((const unsigned char*)data,len,md5)) return -1;
-		sprintf(str_md5,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X",md5[0],md5[1],md5[2],md5[3],md5[4],md5[5],md5[6],md5[7],md5[8],md5[9],md5[10],md5[11],md5[12],md5[13],md5[14],md5[15]);
-		strcpy(key_name,"MD5");
-		strcat(key_name,cert);
-		if(set_cert(cert,data,len)==ESP_OK)
-		{
-			ESP_LOGI(__func__,"certificate type=%s length %d successfully written to flash",cert,len-1);
-			if(set_value_in_nvs(key_name,str_md5)!=ESP_OK) return -2;
-			ESP_LOGI(__func__,"certificate type=%s %s = %s",cert,key_name,str_md5);
-		}
-		if(!strcmp(cert,"KEY")) pKey=data;
-		else if(!strcmp(cert,"ROOT")) pRoot=data;
-		else if(!strcmp(cert,"CERT")) pCert=data;
-		return 0;
-	}
-	ESP_LOGI(__func__,"wrong cert type");
-	return -3;
-}
-
 static int getcert(console_type con, char* cert)
 {
 	int len=0;
@@ -295,6 +270,130 @@ static int getcert(console_type con, char* cert)
 	}
 	return 2;
 }
+
+/* Compare upper(par) with c
+ * if shrt==1 compare only length(c) chars, if shrt==0 compare strongly full names
+ * return 1 if ok, 0 - not OK
+ */
+
+static uint8_t parcmp(char* par,char *c, uint8_t shrt)
+{
+    char s;
+    uint8_t j=0;
+    while((s=par[j]))
+    {
+        if(c[j]==0) return shrt;
+        if( s >= 0x61 && s <= 0x7A ) s-=0x20;
+        if(s!=c[j]) return 0;
+        j++;
+    }
+    if(c[j]) return 0;
+    return 1;
+}
+
+uint8_t set_s(char* p,void* s)
+{
+    _par_t* __pars=_pars;
+    while(__pars->type)
+    {
+        if(parcmp(__pars->c,p,0))
+        {
+            if(__pars->type==PAR_UI32) *((uint32_t*)s)=__pars->u.ui32par;
+            if(__pars->type==PAR_I32)  *((int32_t*)s)=__pars->u.i32par;
+            if(__pars->type==PAR_UI8)  *((uint8_t*)s)=__pars->u.ui8par;
+            if(__pars->type==PAR_EUI64) for(uint8_t j=0;j<8;j++) ((uint8_t*)s)[j]=__pars->u.eui[j];
+            if(__pars->type==PAR_KEY128) for(uint8_t j=0;j<16;j++) ((uint8_t*)s)[j]=__pars->u.key[j];
+            return 0;
+        };
+        __pars++;
+    }
+    return 1;
+}
+
+uint8_t set_par(char* par, char* val_buf)
+{
+    _par_t* __pars=_pars;
+    int i=1;
+    while(__pars->type)
+    {
+        if(parcmp(__pars->c,par,0))
+        {
+            if(!strcmp(__pars->c,"Erase_EEPROM"))
+            {
+//                erase_EEPROM_Data();
+                return 0;
+            }
+            if(__pars->type==PAR_UI32)
+            {
+                if (stringToUInt32(val_buf, &(__pars->u.ui32par))) return 1;
+                for(uint8_t j=0;j<4;j++) DATAEE_WriteByte(i+3-j,((uint8_t*)(&(__pars->u.ui32par)))[j]);
+            }
+            else if(__pars->type==PAR_I32)
+            {
+                if (stringToInt32(val_buf, &(__pars->u.i32par))) return 1;
+                for(uint8_t j=0;j<4;j++) DATAEE_WriteByte(i+3-j,((uint8_t*)(&(__pars->u.i32par)))[j]);
+            }
+            else if(__pars->type==PAR_UI8)
+            {
+                if (stringToUInt8(val_buf, &(__pars->u.ui8par))) return 1;
+                DATAEE_WriteByte(i,__pars->u.ui8par);
+            }
+            else if(__pars->type==PAR_KEY128)
+            {
+                if(strlen(val_buf)!=32) return 1;
+                d[0]='0';
+                d[1]='x';
+                d[4]=0;
+                if(!strcmp(__pars->c,"AppKey"))
+                {
+                    if(!show_hidden)
+                    {
+                        uint8_t cmp;
+                        for(uint8_t j=0;j<16;j++)
+                        {
+                            d[2]=val_buf[2*j];
+                            d[3]=val_buf[2*j+1];
+                            if(stringToUInt8(d,&cmp)) return 1;
+                            if(cmp!=__pars->u.key[j]) return 1;
+                        }
+                        show_hidden=VISIBLE;
+                        return 0;
+                    }
+                }
+                for(uint8_t j=0;j<16;j++)
+                {
+                    d[2]=val_buf[2*j];
+                    d[3]=val_buf[2*j+1];
+                    if (stringToUInt8(d, &(__pars->u.key[j]))) return 1;
+                    DATAEE_WriteByte(i+j,__pars->u.key[j]);
+                }
+            }
+            else if(__pars->type==PAR_EUI64)
+            {
+                if(strlen(val_buf)!=16) return 1;
+                d[0]='0';
+                d[1]='x';
+                d[4]=0;
+                for(uint8_t j=0;j<8;j++)
+                {
+                    d[2]=val_buf[2*j];
+                    d[3]=val_buf[2*j+1];
+                    if (stringToUInt8(d, &(__pars->u.eui[j]))) return 1;
+                    DATAEE_WriteByte(i+j,__pars->u.eui[j]);
+                }
+            }
+            return 0;
+        }
+        if(__pars->type==PAR_UI8) i++;
+        else if(__pars->type==PAR_UI32 || __pars->type==PAR_I32 ) i+=4;
+        else if(__pars->type==PAR_KEY128) i+=16;
+        else if(__pars->type==PAR_EUI64) i+=8;
+        __pars++;
+    }
+    return 1;
+}
+
+
 
 static int print_par(console_type con, char* p)
 {

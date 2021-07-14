@@ -23,6 +23,36 @@ typedef struct param
 
 typedef enum
 {
+    PAR_UI32=1,
+    PAR_I32,
+    PAR_UI8,
+    PAR_KEY128,
+    PAR_EUI64,
+    PAR_STR,
+    PAR_MD5,
+	PAR_CERT
+} par_type_t;
+
+typedef struct par
+{
+    par_type_t type;
+    char* c;
+    union
+    {
+        uint32_t ui32par;
+        int32_t i32par;
+        uint8_t ui8par;
+        uint8_t key[16];
+        uint8_t eui[8];
+        char* str;
+        uint8_t blob[];
+    } u;
+    char* d;
+    uint8_t visible;
+} _par_t;
+
+typedef enum
+{
 	RECEIVE_MODE = 0x00,
 	TRANSMIT_MODE = 0x01
 } tmode_t;
