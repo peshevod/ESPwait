@@ -9,9 +9,6 @@
 //#include "S2LP_Config.h"
 #include <string.h>
 #include <stdio.h>
-#include <dirent.h>
-#include <time.h>
-#include <sys/time.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,15 +19,8 @@
 #include "cmd_nvs.h"
 #include "driver/uart.h"
 
-
 #include "esp_vfs.h"
 #include "esp_vfs_dev.h"
-#include "esp_vfs_fat.h"
-#include "driver/sdspi_host.h"
-#include "driver/spi_common.h"
-#include "sdmmc_cmd.h"
-#include "sdkconfig.h"
-#include "driver/sdmmc_host.h"
 #include "sys/unistd.h"
 #include "mbedtls/md5.h"
 
@@ -438,92 +428,6 @@ static void vTimerCallback1( TimerHandle_t pxTimer )
 }
 
 
-void test_sd()
-{
-    esp_err_t ret;
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = true,
-        .max_files = 15,
-        .allocation_unit_size = 16 * 1024
-    };
-    sdmmc_card_t* card;
-    const char mount_point[] = "/sdcard";
-
-    struct tm tm;
-
-    tm.tm_year = 2021 - 1900;
-    tm.tm_mon = 6;
-    tm.tm_mday = 13;
-    tm.tm_hour = 10;
-    tm.tm_min = 12;
-    tm.tm_sec = 10;
-
-    time_t t = mktime(&tm);
-    struct timeval now = { .tv_sec = t };
-    settimeofday(&now, NULL);
-
-    ESP_LOGI("test_sd", "Initializing SD card");
-
-    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
-
-    // This initializes the slot without card detect (CD) and write protect (WP) signals.
-    // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
-    sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
-
-    gpio_set_pull_mode(15, GPIO_PULLUP_ONLY);   // CMD, needed in 4- and 1- line modes
-    gpio_set_pull_mode(2, GPIO_PULLUP_ONLY);    // D0, needed in 4- and 1-line modes
-    gpio_set_pull_mode(4, GPIO_PULLUP_ONLY);    // D1, needed in 4-line mode only
-    gpio_set_pull_mode(12, GPIO_PULLUP_ONLY);   // D2, needed in 4-line mode only
-    gpio_set_pull_mode(13, GPIO_PULLUP_ONLY);   // D3, needed in 4- and 1-line modes
-
-    ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config, &mount_config, &card);
-
-    if (ret != ESP_OK) {
-        if (ret == ESP_FAIL) {
-            ESP_LOGE("test_sd", "Failed to mount filesystem. "
-                "If you want the card to be formatted, set the EXAMPLE_FORMAT_IF_MOUNT_FAILED menuconfig option.");
-        } else {
-            ESP_LOGE("test_sd", "Failed to initialize the card (%s). "
-                "Make sure SD card lines have pull-up resistors in place.", esp_err_to_name(ret));
-        }
-        return;
-    }
-
-    // Card has been initialized, print its properties
-    sdmmc_card_print_info(stdout, card);
-
-    // Use POSIX and C standard library functions to work with files.
-    // First create a file.
-    ESP_LOGI("test_sd", "Opening file");
-    FILE* f = fopen("/sdcard/hello67890.txt", "w");
-    if (f == NULL) {
-        ESP_LOGE("test_sd", "Failed to open file for writing");
-        return;
-    }
-    fprintf(f, "Hello %s!\n", card->cid.name);
-    fclose(f);
-    ESP_LOGI("test_sd", "File written");
-
-    DIR* dir=opendir("/sdcard");
-    if(dir==NULL)
-    {
-        ESP_LOGE("test_sd", "Failed to open directory");
-    }
-    struct dirent* de;
-    while((de=readdir(dir))!=NULL)
-    {
-    	printf("%s\n",de->d_name);
-    }
-
-
-    // All done, unmount partition and disable SDMMC or SPI peripheral
-    esp_vfs_fat_sdcard_unmount(mount_point, card);
-    ESP_LOGI("test_sd", "Card unmounted");
-
-
-}
-
 int start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
@@ -555,9 +459,6 @@ int start_x_shell(console_type con) {
     	stop_console[con]=1;
     	return -1;
     }
-
-    test_sd();
-
     send_prompt();
     while (1)
     {
