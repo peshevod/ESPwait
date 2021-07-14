@@ -1,16 +1,16 @@
 idf_component_register(REQUIRES nvs_flash)
 
-add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin
-				   COMMAND ${PYTHON} ${IDF_PATH}/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py generate ${CMAKE_CURRENT_SOURCE_DIR}/nvs.csv ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin 0x8000
-				   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/nvs.csv )
-add_custom_target(s2lp DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin)
-add_dependencies(${COMPONENT_TARGET} s2lp)
+add_custom_command(OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin
+				   COMMAND ${PYTHON} ${IDF_PATH}/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py generate ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.csv ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin 0x8000
+				   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.csv )
+add_custom_target(sx1276 DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin)
+add_dependencies(${COMPONENT_TARGET} sx1276)
 
 set_property(DIRECTORY "${COMPONENT_PATH}" APPEND PROPERTY
-     ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin)
-# Set values used in flash_s2lp_args.in and generate flash file
-# for s2lp
-#esptool_py_flash_project_args(s2lp 0x190000 ${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin FLASH_IN_PROJECT)
-esptool_py_flash_target(s2lp-flash "${main_args}" "${sub_args}")
-esptool_py_flash_target_image(s2lp-flash s2lp "0x190000" "${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin")
-esptool_py_flash_target_image(flash s2lp "0x190000" "${CMAKE_CURRENT_SOURCE_DIR}/s2lp.bin")
+     ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin)
+# Set values used in flash_sx1276_args.in and generate flash file
+# for sx1276
+#esptool_py_flash_project_args(sx1276 0x190000 ${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin FLASH_IN_PROJECT)
+esptool_py_flash_target(sx1276-flash "${main_args}" "${sub_args}")
+esptool_py_flash_target_image(sx1276-flash sx1276 "0x190000" "${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin")
+esptool_py_flash_target_image(flash sx1276 "0x190000" "${CMAKE_CURRENT_SOURCE_DIR}/eeprom.bin")
