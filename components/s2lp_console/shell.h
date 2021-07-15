@@ -18,7 +18,6 @@ extern "C" {
 #include "freertos/ringbuf.h"
 #include "s2lp_console.h"
 
-
 #define BUF_LEN 1024
 #define RING_BUF_LEN 1024
 
@@ -49,7 +48,7 @@ int start_x_shell(console_type con);
 void EUSART1_init(console_type con);
 void taskRead(void* param);
 int send_chars(console_type con, char* x);
-int write_cert_to_nvs(char* cert, char* data, int len,char* str_md5);
+uint8_t set_s(char* p,void* s);
 
 #ifdef	__cplusplus
 }

@@ -9,4 +9,4 @@
 #register_component()
 idf_component_register(SRCS radio.c
                     INCLUDE_DIRS "."
-                    REQUIRES S2LP_Library cmd_nvs)
+                    REQUIRES S2LP_Library cmd_nvs s2lp_console)

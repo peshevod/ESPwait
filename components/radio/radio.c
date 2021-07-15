@@ -3,6 +3,7 @@
 #include "radio.h"
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
+#include "shell.h"
 
 static const char* TAG = "Radio";
 extern uint8_t bypass_ldo;
@@ -58,11 +59,11 @@ void radio_init(uint8_t packetlen)
     uint8_t tmp,tmp1;
     uint32_t tmp32;
     
-    get_value_from_nvs("F", 0, NULL, &xRadioInit.lFrequencyBase);
-    get_value_from_nvs("M", 0, NULL, &xRadioInit.xModulationSelect);
-    get_value_from_nvs("R", 0, NULL, &xRadioInit.lDatarate);
-    get_value_from_nvs("W", 0, NULL, &xRadioInit.lBandwidth);
-    get_value_from_nvs("D", 0, NULL, &xRadioInit.lFreqDev);
+    set_s("F", &xRadioInit.lFrequencyBase);
+    set_s("M", &xRadioInit.xModulationSelect);
+    set_s("R", &xRadioInit.lDatarate);
+    set_s("W", &xRadioInit.lBandwidth);
+    set_s("D", &xRadioInit.lFreqDev);
 
     ESP_LOGI(TAG,"nvs FMRWD done");
 
@@ -74,7 +75,7 @@ void radio_init(uint8_t packetlen)
         ESP_LOGI(TAG,"Constant Wave selected");
     }
 
-    get_value_from_nvs("E", 0, NULL, &tmp32);
+    set_s("E", &tmp32);
     xBasicInit.xPreambleLength=(uint16_t)tmp32;
     if(xBasicInit.xPreambleLength==0)
     {
@@ -92,9 +93,9 @@ void radio_init(uint8_t packetlen)
 
     /* S2LP Radio config */
     S2LPRadioInit(&xRadioInit);
-    get_value_from_nvs("S", 0, NULL, &tmp32);
+    set_s("S", &tmp32);
     S2LPRadioSetChannelSpace(tmp32);
-    get_value_from_nvs("C", 0, NULL, &tmp);
+    set_s("C", &tmp);
     S2LPRadioSetChannel(tmp);
     
     if(cw)
@@ -112,7 +113,7 @@ void radio_init(uint8_t packetlen)
     if(!cw && !pn9)
     {
     	/* S2LP Packet config */
-        get_value_from_nvs("G", 0, NULL, &tmp);
+        set_s("G", &tmp);
     	xBasicInit.xCrcMode=tmp;
     	S2LPPktBasicInit(&xBasicInit);
    
@@ -127,7 +128,7 @@ void radio_init(uint8_t packetlen)
     }
     
     S2LPSpiReadRegisters(0x78, 1, &tmp);
-    get_value_from_nvs("L", 0, NULL, &tmp1);
+    set_s("L", &tmp1);
     if(tmp1) tmp&=0xFB;else tmp|=0x04;
     S2LPSpiWriteRegisters(0x78, 1, &tmp);
    
@@ -139,7 +140,7 @@ void radio_tx_init(uint8_t packetlen)
     uint8_t tmp;
     int32_t power;
     radio_init(packetlen);
-    get_value_from_nvs("P", 0, NULL, &power);
+    set_s("P", &power);
    
     /* S2LP Radio set power */
     if(power>14)
@@ -195,7 +196,7 @@ void radio_rx_init(uint8_t packetlen)
       .cRssiThreshdBm = -85,
     };
    
-    get_value_from_nvs("V", 0, NULL, &xSRssiInit.cRssiThreshdBm);
+    set_s("V", &xSRssiInit.cRssiThreshdBm);
 
     S2LPRadioRssiInit(&xSRssiInit);
     S2LPRadioAfcInit(&xSAfcInit);

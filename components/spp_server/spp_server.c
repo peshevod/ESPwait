@@ -1,7 +1,7 @@
 /*
  * spp_server.c
  *
- *  Created on: 8 апр. 2020 г.
+ *  Created on: 8 пїЅпїЅпїЅ. 2020 пїЅ.
  *      Author: ilya_000
  */
 
@@ -58,7 +58,6 @@ char server_name[40];
 static void spp_read_handle(void * param)
 {
     int size = 0;
-    int sizew = 0;
     int fd = (int)param;
     do {
         size = read (fd, spp_data, SPP_DATA_LEN);

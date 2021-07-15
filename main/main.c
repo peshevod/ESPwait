@@ -103,9 +103,9 @@ const int WIFI_CONNECTED_BIT = BIT0;
 
 esp_netif_t* wifi_interface;
 AWS_IoT_Client client;
-extern char* pCert;
-extern char* pRoot;
-extern char* pKey;
+char* pCert;
+char* pRoot;
+char* pKey;
 
 
 
@@ -233,8 +233,8 @@ static esp_err_t wifi_prepare()
 		wifi_interface=esp_netif_create_default_wifi_sta();
 		wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 		esp_wifi_init(&cfg);
-		get_value_from_nvs("PASSWD",0,NULL,sta_config.sta.password);
-		get_value_from_nvs("SSID",0,NULL,sta_config.sta.ssid);
+		set_s("PASSWD",sta_config.sta.password);
+		set_s("SSID",sta_config.sta.ssid);
 		ESP_LOGI(__func__,"SSID=%s PASSWD=%s",sta_config.sta.ssid,sta_config.sta.password);
 		ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 		ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
@@ -572,12 +572,12 @@ static esp_err_t s2lp_start()
 	start_s2lp_console();
 	ESP_LOGI("start1","UID=%08X",uid);
 
-    get_value_from_nvs("T", 0, NULL, &mode);
+    set_s("T", &mode);
 
     if(mode==RECEIVE_MODE) return s2lp_rec_start();
     if(mode==TRANSMIT_MODE)
     {
-    	get_value_from_nvs("X", 0, NULL, &rep);
+    	set_s("X", &rep);
     	next=uid;
     	s2lp_trans_start();
     }
@@ -669,7 +669,7 @@ static void s2lp_trans()
     rep--;
     if(rep==0xFF)
     {
-    	get_value_from_nvs("X", 0, NULL, &rep);
+    	set_s("X",&rep);
     	rep--;
     	seq++;
     }
@@ -679,7 +679,7 @@ static void s2lp_trans()
     	else
     	{
         	uint32_t t;
-    		get_value_from_nvs("I", 0, NULL, &t);
+    		set_s("I", &t);
     	   	trans_sleep=t*1000000;
     	}
     }
@@ -722,29 +722,9 @@ void to_sleep(uint32_t timeout)
 
 static void system_init()
 {
-	char str_md5[40];
 	init_uart0();
 	initialize_nvs();
-	get_certs();
-	if(pCert==NULL)
-	{
-		if(write_cert_to_nvs("CERT",(char*)certificate_pem_crt_start, certificate_pem_crt_end-certificate_pem_crt_start, str_md5))
-			ESP_LOGE(__func__,"certificate type=CERT length %d failed write to flash",certificate_pem_crt_end-certificate_pem_crt_start-1);
-		else pCert=(char*)certificate_pem_crt_start;
-	}
-	if(pRoot==NULL)
-	{
-		if(write_cert_to_nvs("ROOT",(char*)aws_root_ca_pem_start, aws_root_ca_pem_end-aws_root_ca_pem_start, str_md5))
-			ESP_LOGE(__func__,"certificate type=ROOT length %d failed write to flash",aws_root_ca_pem_end-aws_root_ca_pem_start-1);
-		else pRoot=(char*)aws_root_ca_pem_start;
-	}
-	if(pKey==NULL)
-	{
-		if(write_cert_to_nvs("KEY",(char*)private_pem_key_start, private_pem_key_end-private_pem_key_start, str_md5))
-			ESP_LOGE(__func__,"certificate type=KEY length %d failed write to flash", private_pem_key_end-private_pem_key_start-1);
-		else pKey=(char*)private_pem_key_start;
-	}
-	S2LPSpiInit();
+	Sync_EEPROM();
 }
 
 

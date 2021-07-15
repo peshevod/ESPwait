@@ -23,6 +23,8 @@
 #include "esp_vfs_dev.h"
 #include "sys/unistd.h"
 #include "mbedtls/md5.h"
+#include "nvs.h"
+#include "shell.h"
 
 char t[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
@@ -31,19 +33,218 @@ char err[] = {"Error\nESPWait> "};
 char ex[] = {"Exit\n"};
 char commands[] = {'S', 'L', 'D'};
 char ver[]={"=== S2-LP shell v 1.1.5 ===\n"};
+char b[BUF_LEN];
+uint8_t show_hidden=0;
 
 static exchange_par_t z[2];
-extern _param _params[];
+extern _par_t _pars[];
 extern int volatile console_fd;
 uint8_t stop_console[2];
 TaskHandle_t rtask[2];
-//static int c_next;
-extern char* pCert;
-extern char* pRoot;
-extern char* pKey;
+extern nvs_handle_t nvs;
+uint8_t hex=0;
+char d[5];
+char val_buf[BUF_LEN];
 
 
+static uint8_t stringToUInt32(char* str, uint32_t* val) //it is a function made to convert the string value to integer value.
+{
+    uint8_t i = 0;
+    uint32_t sum = 0;
+    if(str[0]=='0' && (str[1]=='x' || str[1]=='X'))
+    {
+        i+=2;
+        while(str[i] != 0)
+        {
+           if (str[i] >= 0x30 && str[i] <= 0x39) sum=sum*16+(str[i]-0x30);
+           else if(str[i] >= 0x41 && str[i] <= 0x46) sum=sum*16+(str[i]-0x41+10);
+           else if(str[i] >= 0x61 && str[i] <= 0x66) sum=sum*16+(str[i]-0x41+10);
+           else return 1;
+           i++;
+        }
+    }
+    else
+    {
+        while (str[i] != '\0') //string not equals to null
+        {
 
+            if (str[i] < 48 || str[i] > 57) return 1; // ascii value of numbers are between 48 and 57.
+            else {
+                sum = sum * 10 + (str[i] - 48);
+                i++;
+            }
+        }
+    }
+    *val = sum;
+    return 0;
+}
+
+static uint8_t stringToUInt8(char* str, uint8_t* val) //it is a function made to convert the string value to integer value.
+{
+    int8_t i = -1;
+    uint8_t sum = 0;
+    if(str[0]=='0' && (str[1]=='x' || str[1]=='X'))
+    {
+        i+=2;
+        while(str[++i] != 0)
+        {
+           if(i>=4) return 1;
+           if (str[i] >= 0x30 && str[i] <= 0x39) sum=sum*16+(str[i]-0x30);
+           else if(str[i] >= 0x41 && str[i] <= 0x46) sum=sum*16+(str[i]-0x41+10);
+           else if(str[i] >= 0x61 && str[i] <= 0x66) sum=sum*16+(str[i]-0x41+10);
+           else return 1;
+        }
+    }
+    else
+    {
+        while (str[++i] != 0);
+        if (i > 3) return 1;
+        if (i == 3) {
+            if (str[0] > 0x32) return 1;
+            if (str[0] == 0x32) {
+                if (str[1] > 0x35) return 1;
+                if (str[0]==0x32 && str[1] == 0x35 && str[2] > 0x35) return 1;
+            }
+        }
+        i = 0;
+        while (str[i] != '\0') //string not equals to null
+        {
+            if (str[i] < 48 || str[i] > 57) return 1; // ascii value of numbers are between 48 and 57.
+            else {
+                sum = sum * 10 + (str[i] - 48);
+                i++;
+            }
+        }
+    }
+    *val = sum;
+    return 0;
+}
+
+static uint8_t stringToInt32(char* str, int32_t* val) //it is a function made to convert the string value to integer value.
+{
+    uint8_t i = 0, sign = 0;
+    int32_t sum = 0;
+    if (str[0] == '-') {
+        sign = 1;
+        i = 1;
+    }
+    if(str[i]=='0' && (str[i+1]=='x' || str[i+1]=='X'))
+    {
+        i+=2;
+        while(str[i] != 0)
+        {
+           if((i-sign)>=10) return 1;
+           if (str[i] >= 0x30 && str[i] <= 0x39) sum=sum*16+(str[i]-0x30);
+           else if(str[i] >= 0x41 && str[i] <= 0x46) sum=sum*16+(str[i]-0x41+10);
+           else if(str[i] >= 0x61 && str[i] <= 0x66) sum=sum*16+(str[i]-0x41+10);
+           else return 1;
+           i++;
+        }
+    }
+    else
+    {
+        while (str[i] != '\0') //string not equals to null
+        {
+
+            if (str[i] < 48 || str[i] > 57) return 1; // ascii value of numbers are between 48 and 57.
+            else {
+                sum = sum * 10 + (str[i] - 48);
+                i++;
+            }
+        }
+    }
+    if (sign) *val = -sum;
+    else *val = sum;
+    return 0;
+}
+
+static char* i32toa(int32_t i, char* b) {
+    char const digit[] = "0123456789";
+    char* p = b;
+    if (i < 0) {
+        *p++ = '-';
+        i *= -1;
+    }
+    int32_t shifter = i;
+    do { //Move to where representation ends
+        ++p;
+        shifter = shifter / 10;
+    } while (shifter);
+    *p = '\0';
+    do { //Move back, inserting digits as u go
+        *--p = digit[i % 10];
+        i = i / 10;
+    } while (i);
+    return b;
+}
+
+static char* ui32toa(uint32_t i, char* b) {
+    char const digit[] = "0123456789";
+    char* p = b;
+    uint32_t shifter = i;
+    do { //Move to where representation ends
+        ++p;
+        shifter = shifter / 10;
+    } while (shifter);
+    *p = '\0';
+    do { //Move back, inserting digits as u go
+        *--p = digit[i % 10];
+        i = i / 10;
+    } while (i);
+    return b;
+}
+
+static char* ui8toa(uint8_t i, char* b) {
+    char const digit[] = "0123456789";
+    char* p = b;
+    uint8_t shifter = i;
+    do { //Move to where representation ends
+        ++p;
+        shifter = shifter / 10;
+    } while (shifter);
+    *p = '\0';
+    do { //Move back, inserting digits as u go
+        *--p = digit[i % 10];
+        i = i / 10;
+    } while (i);
+    return b;
+}
+
+static char* ui8tox(uint8_t i, char* b)
+{
+    char* p = b;
+    *p++='0';
+    *p++='x';
+    *p++=t[i>>4];
+    *p++=t[i&0x0f];
+    *p=0;
+    return b;
+}
+
+
+static char* ui32tox(uint32_t i, char* b)
+{
+    uint8_t* ch;
+    ch=((uint8_t*)(&i));
+    char* p = b;
+    *p++='0';
+    *p++='x';
+    *p++=t[ch[3]>>4];
+    *p++=t[ch[3]&0x0F];
+    *p++=t[ch[2]>>4];
+    *p++=t[ch[2]&0x0F];
+    *p++=t[ch[1]>>4];
+    *p++=t[ch[1]&0x0F];
+    *p++=t[ch[0]>>4];
+    *p++=t[ch[0]&0x0F];
+    *p=0;
+    return b;
+}
+
+static char* i32tox(int32_t i, char* b)
+{
+    return ui32tox((uint32_t)i,b);
+}
 
 void EUSART1_init(console_type con)
 {
@@ -183,93 +384,16 @@ static int EUSART1_Write(console_type con, char c)
 }
 
 
-int send_chars(console_type con, char* x) {
-    uint8_t i=0;
-    while(x[i]!=0)
-	{
-    	if(EUSART1_Write(con, x[i++])==1) continue;
-    	return -1;
-	}
-    return 0;
-}
-
-
 void empty_RXbuffer(console_type con) {
     while (EUSART1_is_rx_ready(con)) EUSART1_Read(con);
 }
 
+bool EUSART1_is_tx_done(console_type con)
+{
+	return (z[con].w_ready==1);
+}
+
 static int volatile timer4_expired[2];
-
-static void Timer4Callback0( TimerHandle_t pxTimer )
-{
-	timer4_expired[0]=1;
-}
-
-static void Timer4Callback1( TimerHandle_t pxTimer )
-{
-	timer4_expired[1]=1;
-}
-
-
-static int getcert(console_type con, char* cert)
-{
-	int len=0;
-	char c;
-	char str_md5[40];
-	char str[64];
-	if(!strcmp(cert,"KEY") || !strcmp(cert,"ROOT") || !strcmp(cert,"CERT") )
-	{
-		char* data=(char*)malloc(4096);
-		send_chars(con, "Please wait 1s, then sent certificate or key, at the end press Ctrl-Z...\n");
-		timer4_expired[con]=0;
-		TimerHandle_t Timer4= con==1 ? xTimerCreate("Timer41",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback1) : xTimerCreate("Timer40",300000/portTICK_RATE_MS,pdFALSE,NULL,Timer4Callback0);
-		xTimerStart(Timer4,0);
-		z[con].gError=0;
-		empty_RXbuffer(con);
-		do
-		{
-			while(!timer4_expired[con] && !EUSART1_is_rx_ready(con)) vTaskDelay(1/portTICK_RATE_MS);
-			c=EUSART1_Read(con);
-			if(c=='\xff') continue;
-			if( c==0x1a || c==0x00 )
-			{
-				data[len++]=0;
-				break;
-			}
-//			if(c=='\n') EUSART1_Write('!');
-//			if(c=='\r') EUSART1_Write('?');
-			EUSART1_Write(con,c);
-			data[len++]=c;
-		} while(!timer4_expired[con]);
-		if(timer4_expired[con])
-		{
-			free(data);
-			return 2;
-		}
-		switch(write_cert_to_nvs(cert,data,len,str_md5))
-		{
-			case -1:
-				send_chars(con, "Error while calculating MD5\n");
-				free(data);
-				return 2;
-			case -2:
-				send_chars(con, "Error while writing MD5 to flash\n");
-				free(data);
-				return 2;
-			case -3:
-				send_chars(con, "Wrong cert name\n");
-				free(data);
-				return 2;
-			case 0:
-				sprintf(str,"\nCheck MD5 sum: %s\n",str_md5);
-				send_chars(con, str);
-				free(data);
-				return 1;
-		}
-		free(data);
-	}
-	return 2;
-}
 
 /* Compare upper(par) with c
  * if shrt==1 compare only length(c) chars, if shrt==0 compare strongly full names
@@ -313,7 +437,7 @@ uint8_t set_s(char* p,void* s)
 uint8_t set_par(char* par, char* val_buf)
 {
     _par_t* __pars=_pars;
-    int i=1;
+    esp_err_t err;
     while(__pars->type)
     {
         if(parcmp(__pars->c,par,0))
@@ -326,30 +450,30 @@ uint8_t set_par(char* par, char* val_buf)
             if(__pars->type==PAR_UI32)
             {
                 if (stringToUInt32(val_buf, &(__pars->u.ui32par))) return 1;
-                for(uint8_t j=0;j<4;j++) DATAEE_WriteByte(i+3-j,((uint8_t*)(&(__pars->u.ui32par)))[j]);
+                if((err=nvs_set_u32(nvs,__pars->c,__pars->u.ui32par))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_I32)
             {
                 if (stringToInt32(val_buf, &(__pars->u.i32par))) return 1;
-                for(uint8_t j=0;j<4;j++) DATAEE_WriteByte(i+3-j,((uint8_t*)(&(__pars->u.i32par)))[j]);
+                if((err=nvs_set_i32(nvs,__pars->c,__pars->u.i32par))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_UI8)
             {
                 if (stringToUInt8(val_buf, &(__pars->u.ui8par))) return 1;
-                DATAEE_WriteByte(i,__pars->u.ui8par);
+                if((err=nvs_set_u8(nvs,__pars->c,__pars->u.ui8par))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_KEY128)
             {
-                if(strlen(val_buf)!=32) return 1;
+            	if(strlen(val_buf)!=32) return 1;
                 d[0]='0';
                 d[1]='x';
                 d[4]=0;
                 if(!strcmp(__pars->c,"AppKey"))
                 {
-                    if(!show_hidden)
+                	if(!show_hidden)
                     {
                         uint8_t cmp;
-                        for(uint8_t j=0;j<16;j++)
+                		for(uint8_t j=0;j<16;j++)
                         {
                             d[2]=val_buf[2*j];
                             d[3]=val_buf[2*j+1];
@@ -365,8 +489,8 @@ uint8_t set_par(char* par, char* val_buf)
                     d[2]=val_buf[2*j];
                     d[3]=val_buf[2*j+1];
                     if (stringToUInt8(d, &(__pars->u.key[j]))) return 1;
-                    DATAEE_WriteByte(i+j,__pars->u.key[j]);
                 }
+                if((err=nvs_set_blob(nvs,__pars->c,__pars->u.key,16))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_EUI64)
             {
@@ -379,72 +503,215 @@ uint8_t set_par(char* par, char* val_buf)
                     d[2]=val_buf[2*j];
                     d[3]=val_buf[2*j+1];
                     if (stringToUInt8(d, &(__pars->u.eui[j]))) return 1;
-                    DATAEE_WriteByte(i+j,__pars->u.eui[j]);
                 }
+                if((err=nvs_set_u64(nvs,__pars->c,__pars->u.ui64par))!=ESP_OK) return err;
             }
+            if((err=nvs_commit(nvs))!=ESP_OK) return err;
             return 0;
         }
-        if(__pars->type==PAR_UI8) i++;
-        else if(__pars->type==PAR_UI32 || __pars->type==PAR_I32 ) i+=4;
-        else if(__pars->type==PAR_KEY128) i+=16;
-        else if(__pars->type==PAR_EUI64) i+=8;
         __pars++;
     }
     return 1;
 }
 
-
-
-static int print_par(console_type con, char* p)
-{
-	char value[64];
-	char y[256];
-	_param* __params=_params;
-    while(__params->type)
-    {
-        if(!strcmp(__params->c,p))
-        {
-        	get_value_from_nvs(p, z[con].hex, y, value);
-        	return send_chars(con, y);
-        }
-        __params++;
-    }
-    return -1;
-}
-
-
-static int EUSART1_list(console_type con)
-{
-	char value[64];
-	char y[256];
-	int rc;
-	list_init();
-	do
+int send_chars(console_type con, char* x) {
+    uint8_t i=0;
+    while(x[i]!=0)
 	{
-		rc=list(z[con].hex,y,value);
-		if(send_chars(con, y)!=0) return -1;
-	} while(rc==1);
-	return 0;
+    	if(EUSART1_Write(con, x[i++])==1) continue;
+    	return -1;
+	}
+    return 0;
 }
 
-static int EUSART1_help(console_type con)
+void printVar(console_type con, char* text, par_type_t type, void* var, bool hex, bool endline)
 {
-	char* lines[]={
-			"H - print this help\n",
-			"L(x) - print all parameters\n",
-			"D(x) <p> - print parameter <p>\n",
-			"S <p>=<v> - set parameter <p> to <v>",
-			"G KEY - upload private key\n",
-			"G CERT - upload thing certificate\n",
-			"G ROOT - upload root certificate\n"
-	};
-	for(uint8_t i=0;i<7;i++) if(send_chars(con,lines[i])!=0) return -1;
-	return 0;
-
+    uint8_t j0=8;
+    send_chars(con,text);
+    switch(type)
+    {
+        case PAR_UI32:
+            if(hex) send_chars(con,ui32tox(*((uint32_t*)var),b)); else send_chars(con,ui32toa(*((uint32_t*)var),b));
+            break;
+        case PAR_I32:
+            if(hex) send_chars(con,i32tox(*((int32_t*)var),b)); else send_chars(con,i32toa(*((int32_t*)var),b));
+            break;
+        case PAR_UI8:
+            if(hex) send_chars(con,ui8tox(*((uint8_t*)var),b)); else send_chars(con,ui8toa(*((uint8_t*)var),b));
+            break;
+        case PAR_KEY128:
+            j0=16;
+        case PAR_EUI64:
+            for(uint8_t j=0;j<j0;j++)
+            {
+                send_chars(con," ");
+                if(hex) send_chars(con,ui8tox(((uint8_t*)var)[j],b)); else send_chars(con,ui8toa(((uint8_t*)var)[j],b));
+            }
+            break;
+        case PAR_STR:
+            send_chars(con,(char*)var);
+    }
+    if(endline) send_chars(con,"\r\n");
 }
 
 
-uint8_t proceed(console_type con) {
+static void _print_par(console_type con, _par_t* par)
+{
+    if(par->visible==HIDDEN && !show_hidden) return;
+    if(par->type==PAR_UI32)
+    {
+        if(hex) ui32tox(par->u.ui32par, val_buf);
+        else ui32toa(par->u.ui32par, val_buf);
+    }
+    else if(par->type==PAR_I32)
+    {
+        if(hex) i32tox(par->u.i32par, val_buf);
+        else i32toa(par->u.i32par, val_buf);
+    }
+    else if(par->type==PAR_UI8)
+    {
+        if(hex) ui8tox(par->u.ui8par, val_buf);
+        else ui8toa(par->u.ui8par, val_buf);
+    }
+    else if(par->type==PAR_KEY128)
+    {
+        for(uint8_t j=0;j<16;j++)
+        {
+            ui8tox(par->u.key[j], d);
+            val_buf[2*j]=d[2];
+            val_buf[2*j+1]=d[3];
+        }
+        val_buf[32]=0;
+    }
+    else if(par->type==PAR_EUI64)
+    {
+        for(uint8_t j=0;j<8;j++)
+        {
+            ui8tox(par->u.eui[j], d);
+            val_buf[2*j]=d[2];
+            val_buf[2*j+1]=d[3];
+        }
+        val_buf[16]=0;
+    }
+    char* s=par->c;
+    while(*s!=0)
+    {
+        EUSART1_Write(con,*s);
+        s++;
+    }
+    EUSART1_Write(con, '=');
+    uint8_t i = 0;
+    while (val_buf[i]) {
+        EUSART1_Write(con, val_buf[i++]);
+        while (!EUSART1_is_tx_done(con));
+    }
+    EUSART1_Write(con,' ');
+    i=0;
+    while (par->d[i]) {
+        EUSART1_Write(con, par->d[i++]);
+        while (!EUSART1_is_tx_done(con));
+    }
+    EUSART1_Write(con,'\r');
+    EUSART1_Write(con,'\n');
+    while (!EUSART1_is_tx_done(con));
+}
+
+static void print_par(console_type con, char* p)
+{
+    _par_t* __pars=_pars;
+    while(__pars->type)
+    {
+        if(parcmp(__pars->c,p,0))
+        {
+             _print_par(con, __pars);
+             return;
+        }
+        __pars++;
+    }
+}
+
+static void print_pars(console_type con)
+{
+    _par_t* __pars=_pars;
+    while(__pars->type)
+    {
+         _print_par(con,__pars);
+        __pars++;
+    }
+}
+
+
+static uint8_t proceed(console_type con) {
+    uint8_t i = 0,cmd,j,s;
+    char par[16];
+    //    printf("proceed %s\r\n",c_buf);
+    z[con].c_buf[z[con].c_len] = 0;
+    cmd = z[con].c_buf[i++];
+    if(cmd==0) return 1;
+    if(z[con].c_buf[1]=='X')
+    {
+        hex=1;
+        i++;
+    }
+    else hex=0;
+    if (cmd == 'Q' && z[con].c_buf[i] == 0) {
+    	stop_console[SERIAL_CONSOLE]=1;
+    	stop_console[BT_CONSOLE]=1;
+        send_exit();
+        return 0;
+    }
+    if (cmd == 'L' && z[con].c_buf[i] == 0) {
+        print_pars(con);
+        return 1;
+    }
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
+    j=0;
+    s=z[con].c_buf[i];
+    while(s!=' ' && s!='\t' && s!=0 && s!='=')
+    {
+        par[j++] = s;
+        s=z[con].c_buf[++i];
+    }
+    par[j]=0;
+    uint8_t ip = 0, ip0 = 0xff;
+    j=0;
+    do {
+        if (parcmp(_pars[ip].c,par,1)) {
+            ip0 = ip;
+            j++;
+        }
+    } while (_pars[++ip].type);
+    if (j!=1) return 2;
+    j=0;
+    while((s=_pars[ip0].c[j]))
+    {
+        if( s >= 0x61 && s <= 0x7A ) s-=0x20;
+        par[j++]=s;
+    }
+    par[j]=0;
+    /*send_chars("\r\n par=");
+    send_chars(par);
+    send_chars("\r\n");*/
+    if (cmd == 'D') {
+        if (z[con].c_buf[i] == 0) {
+            print_par(con,par);
+            return 1;
+        } else return 2;
+    }
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
+    if (z[con].c_buf[i++] != '=') return 2;
+    while (z[con].c_buf[i] == ' ' || z[con].c_buf[i] == '\t') i++;
+    ip = 0;
+    do {
+        val_buf[ip++] = z[con].c_buf[i];
+    } while (z[con].c_buf[i++]);
+    if (set_par(par, val_buf)) return 2;
+    print_par(con, par);
+    return 1;
+}
+
+
+/*uint8_t proceed(console_type con) {
     uint8_t i = 0, cmd, j;
     char par[16];
     //    printf("proceed %s\r\n",c_buf);
@@ -510,7 +777,7 @@ uint8_t proceed(console_type con) {
     set_value_in_nvs(par, z[con].val_buf);
     if(print_par(con, par)!=0) return -1;
     return 1;
-}
+}*/
 
 static int volatile s2lp_console_timer_expired[2];
 
@@ -527,7 +794,7 @@ static void vTimerCallback1( TimerHandle_t pxTimer )
 }
 
 
-int start_x_shell(console_type con) {
+/*int start_x_shell(console_type con) {
     char c;
     uint8_t start = 0;
     int32_t x=con;
@@ -617,7 +884,102 @@ int start_x_shell(console_type con) {
             }
         } else vTaskDelay(100/portTICK_RATE_MS);
     }
-}
+}*/
 
+int start_x_shell(console_type con) {
+    char c;
+    uint8_t start = 0;
+    int rc;
+    int32_t x=con;
+    //    printf("Start shell\r");
+
+    EUSART1_init(con);
+    z[con].c_len = 0;
+    show_hidden=0;
+//    SetTimer3(11000);
+	if(send_chars(con, "\n Press any key to start console...\n")!=0)
+	{
+        stop_console[con]=1;
+    	return -1;
+	}
+	TimerHandle_t Timer3= con==SERIAL_CONSOLE ? xTimerCreate("Timer30",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback0) : xTimerCreate("Timer31",60000/portTICK_RATE_MS,pdFALSE,(void*)x,vTimerCallback1);
+    if(Timer3==NULL)
+    {
+    	ESP_LOGI("start_x_shell","Timer not created, console=%d",con);
+        stop_console[con]=1;
+    	return -1;
+    }
+	if(xTimerStart(Timer3,0)!=pdPASS)
+	{
+    	ESP_LOGI("start_x_shell","Timer not started, console=%d",con);
+        stop_console[con]=1;
+    	return -1;
+	}
+    s2lp_console_timer_expired[con]=0;
+    if(send_chars(con, ver)!=0)
+    {
+    	stop_console[con]=1;
+    	return -1;
+    }
+    send_prompt();
+    while (1)
+    {
+        if (stop_console[con])
+        {
+        	send_exit();
+        	return 0;
+        }
+    	if ((!start && s2lp_console_timer_expired[con]))
+        {
+        	send_exit();
+        	stop_console[con]=1;
+            return 0;
+        }
+        if ((rc=EUSART1_is_rx_ready(con)))
+        {
+            if(rc==-1)
+            {
+            	stop_console[con]=1;
+            	return -1;
+            }
+        	c = EUSART1_Read(con);
+            if(EUSART1_Write(con, c)!=1)
+			{
+				stop_console[con]=1;
+				return -1;
+			}
+            if (c == 0x08) {
+                if(EUSART1_Write(con, ' ')!=1 || EUSART1_Write(con, c)!=1)
+				{
+                	stop_console[con]=1;
+                    return -1;
+				}
+                z[con].c_len--;
+                continue;
+            }
+            start = 1;
+            if(c=='\r' || c== '\n')
+            {
+				z[con].c_buf[z[con].c_len] = 0;
+				uint8_t r = proceed(con);
+				if (r == 0)
+				{
+					vTaskDelay(500 / portTICK_PERIOD_MS);
+					stop_console[con]=1;
+					return 0;
+				}
+				if (r != 1) send_error()
+				else send_prompt();
+				empty_RXbuffer(con);
+				z[con].c_len = 0;
+            }
+            else
+            {
+				if (c >= 0x61 && c <= 0x7A) c -= 0x20;
+				z[con].c_buf[z[con].c_len++] = c;
+            }
+        } else vTaskDelay(100/portTICK_RATE_MS);
+    }
+}
 
 

@@ -14,12 +14,8 @@ extern "C" {
 
 #include "nvs.h"
 
-typedef struct param
-{
-    char c[16];
-    nvs_type_t type;
-    char desc[200];
-} _param;
+#define VISIBLE 1
+#define HIDDEN  0
 
 typedef enum
 {
@@ -28,9 +24,9 @@ typedef enum
     PAR_UI8,
     PAR_KEY128,
     PAR_EUI64,
-    PAR_STR,
-    PAR_MD5,
-	PAR_CERT
+    PAR_STR
+//    PAR_MD5,
+//	PAR_CERT
 } par_type_t;
 
 typedef struct par
@@ -45,11 +41,12 @@ typedef struct par
         uint8_t key[16];
         uint8_t eui[8];
         char* str;
-        uint8_t blob[];
+        uint64_t ui64par;
     } u;
     char* d;
     uint8_t visible;
 } _par_t;
+
 
 typedef enum
 {
@@ -58,15 +55,11 @@ typedef enum
 } tmode_t;
 
 // Register NVS functions
-void register_nvs();
+void make_deveui(void);
 void get_uid(uint32_t* uid);
-esp_err_t get_value_from_nvs(char *key, int x, char* y,void* value);
-esp_err_t set_value_in_nvs(char *key, const char *str_value);
-int list_init(void);
-int list(int x, char* y, char* value);
 esp_err_t add_uid(void);
-esp_err_t set_cert(char* key, char* value, int len);
-esp_err_t get_certs(void);
+esp_err_t Sync_EEPROM(void);
+
 
 #ifdef __cplusplus
 }
