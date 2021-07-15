@@ -66,7 +66,6 @@ void serial_console()
 
 void start_s2lp_console()
 {
-    get_uid(&uid);
     stop_console[SERIAL_CONSOLE]=0;
     stop_console[BT_CONSOLE]=0;
     uart_flush_input(UART_NUM_0);

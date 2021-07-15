@@ -80,22 +80,26 @@ uint8_t s2lp_console_ex=0;
 static char eeprom_namespace[16] = "params";
 static char eeprom_partition[16] = "params";
 static const char *TAG = "cmd_nvs";
-static char key0[17];
+
+
+static void make_deveui(void);
+static void get_uid(uint32_t* uid);
+static esp_err_t add_uid(void);
+
 
 esp_err_t Sync_EEPROM(void)
 {
     _par_t* __pars=_pars;
-    int i=1;
     esp_err_t err;
-    nvs_handle_t nvs;
     uint8_t v8;
     size_t len;
     void* p;
-	char str_md5[40];
 
-	nvs_flash_init();
+	err=nvs_flash_init_partition(eeprom_partition);
+//	printf("nvs_flash_init_partition result=%s\n",esp_err_to_name(err));
 
 	err = nvs_open_from_partition(eeprom_partition, eeprom_namespace, NVS_READWRITE, &nvs);
+//	printf("nvs_open namespace result=%s\n",esp_err_to_name(err));
     if (err != ESP_OK) {
     	return err;
     }
@@ -214,6 +218,7 @@ esp_err_t Sync_EEPROM(void)
 		}
 
 		make_deveui();
+		nvs_set_u8(nvs,"eeprom",1);
 
 		if((err=nvs_commit(nvs))!=ESP_OK)
 		{
@@ -224,7 +229,7 @@ esp_err_t Sync_EEPROM(void)
 
 }
 
-void make_deveui(void)
+static void make_deveui(void)
 {
     uint8_t deveui[8],joineui[8];
 	uint8_t mac[6];
@@ -242,7 +247,7 @@ void make_deveui(void)
     nvs_set_blob(nvs, "JOIN0EUI",joineui,8);
 }
 
-void get_uid(uint32_t* uid)
+static void get_uid(uint32_t* uid)
 {
 	uint8_t mac[6];
 	ESP_ERROR_CHECK(esp_efuse_mac_get_default(mac));
@@ -251,26 +256,7 @@ void get_uid(uint32_t* uid)
 	ESP_LOGI("get_uid","MAC: %02x %02x %02x %02x %02x %02x %08x",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5],uid[0]);
 }
 
-static int key_to_type(char* key)
-{
-
-	int i=0;
-    while (key[i]) {
-    	key0[i] = toupper((unsigned char) key[i]);
-    	i++;
-    }
-    key0[i]=0;
-    i=0;
-	while(_pars[i].type!=0)
-	{
-		if(!strcmp(key0,_pars[i].c)) return i;
-		i++;
-	}
-	return -1;
-}
-
-
-esp_err_t add_uid()
+static esp_err_t add_uid()
 {
     esp_err_t err;
     uint32_t uid;
@@ -279,4 +265,41 @@ esp_err_t add_uid()
     return err;
 
 }
+
+
+esp_err_t Write_u32_EEPROM(char* key, uint32_t val)
+{
+	return nvs_set_u32(nvs,key,val);
+}
+
+esp_err_t Write_u8_EEPROM(char* key, uint8_t val)
+{
+	return nvs_set_u8(nvs,key,val);
+}
+
+esp_err_t Write_i32_EEPROM(char* key, int32_t val)
+{
+	return nvs_set_i32(nvs,key,val);
+}
+
+esp_err_t Write_key_EEPROM(char* key, uint8_t* appkey)
+{
+	return nvs_set_blob(nvs,key,appkey,16);
+}
+
+esp_err_t Write_eui_EEPROM(char* key, uint8_t* eui)
+{
+	return nvs_set_u64(nvs,key,*((uint64_t*)eui));
+}
+
+esp_err_t Write_str_EEPROM(char* key, char* str)
+{
+	return nvs_set_str(nvs,key,str);
+}
+
+esp_err_t Commit(void)
+{
+	return nvs_commit(nvs);
+}
+
 

@@ -55,10 +55,13 @@ typedef enum
 } tmode_t;
 
 // Register NVS functions
-void make_deveui(void);
-void get_uid(uint32_t* uid);
-esp_err_t add_uid(void);
 esp_err_t Sync_EEPROM(void);
+esp_err_t Write_u32_EEPROM(char* key, uint32_t val);
+esp_err_t Write_u8_EEPROM(char* key, uint8_t val);
+esp_err_t Write_i32_EEPROM(char* key, int32_t val);
+esp_err_t Write_key_EEPROM(char* key, uint8_t* appkey);
+esp_err_t Write_eui_EEPROM(char* key, uint8_t* eui);
+esp_err_t Write_str_EEPROM(char* key, char* str);
 
 
 #ifdef __cplusplus

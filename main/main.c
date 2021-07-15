@@ -723,7 +723,7 @@ void to_sleep(uint32_t timeout)
 static void system_init()
 {
 	init_uart0();
-	initialize_nvs();
+//	initialize_nvs();
 	Sync_EEPROM();
 }
 
@@ -798,6 +798,7 @@ void app_main(void)
 		case ESP_SLEEP_WAKEUP_UNDEFINED:
 		default:
 			ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
+			Sync_EEPROM();
 			S2LPEnterShutdown();
 			S2LPExitShutdown();
 			seq=0;
