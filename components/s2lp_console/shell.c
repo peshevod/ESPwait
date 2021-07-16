@@ -19,11 +19,7 @@
 #include "cmd_nvs.h"
 #include "driver/uart.h"
 
-#include "esp_vfs.h"
-#include "esp_vfs_dev.h"
 #include "sys/unistd.h"
-#include "mbedtls/md5.h"
-#include "nvs.h"
 #include "shell.h"
 
 char t[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
@@ -41,7 +37,6 @@ extern _par_t _pars[];
 extern int volatile console_fd;
 uint8_t stop_console[2];
 TaskHandle_t rtask[2];
-extern nvs_handle_t nvs;
 uint8_t hex=0;
 char d[5];
 
@@ -580,13 +575,13 @@ uint8_t set_par(console_type con, char* par, char* val_buf)
             if(__pars->type==PAR_UI32)
             {
                 if (stringToUInt32(val_buf, &(__pars->u.ui32par))) return 1;
-                if((err=Write_u32_EEPROM(__pars->c,__pars->u.ui32par))!=ESP_OK) return err;
+                if((err=Write_u32_params(__pars->c,__pars->u.ui32par))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_I32)
             {
                 if (stringToInt32(val_buf, &(__pars->u.i32par))) return 1;
 //                send_chars(con,"before write");
-                if((err=Write_i32_EEPROM(__pars->c,__pars->u.i32par))!=ESP_OK)
+                if((err=Write_i32_params(__pars->c,__pars->u.i32par))!=ESP_OK)
 				{
 //                	printf("err=%s\n",esp_err_to_name(err));
                 	return err;
@@ -595,7 +590,7 @@ uint8_t set_par(console_type con, char* par, char* val_buf)
             else if(__pars->type==PAR_UI8)
             {
                 if (stringToUInt8(val_buf, &(__pars->u.ui8par))) return 1;
-                if((err=Write_u8_EEPROM(__pars->c,__pars->u.ui8par))!=ESP_OK) return err;
+                if((err=Write_u8_params(__pars->c,__pars->u.ui8par))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_KEY128)
             {
@@ -625,7 +620,7 @@ uint8_t set_par(console_type con, char* par, char* val_buf)
                     d[3]=val_buf[2*j+1];
                     if (stringToUInt8(d, &(__pars->u.key[j]))) return 1;
                 }
-                if((err=Write_key_EEPROM(__pars->c,__pars->u.key))!=ESP_OK) return err;
+                if((err=Write_key_params(__pars->c,__pars->u.key))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_EUI64)
             {
@@ -639,16 +634,16 @@ uint8_t set_par(console_type con, char* par, char* val_buf)
                     d[3]=val_buf[2*j+1];
                     if (stringToUInt8(d, &(__pars->u.eui[j]))) return 1;
                 }
-                if((err=Write_eui_EEPROM(__pars->c,__pars->u.eui))!=ESP_OK) return err;
+                if((err=Write_eui_params(__pars->c,__pars->u.eui))!=ESP_OK) return err;
             }
             else if(__pars->type==PAR_STR)
             {
                 strcpy(__pars->u.str, val_buf);
-            	if((err=Write_str_EEPROM(__pars->c,__pars->u.str))!=ESP_OK) return err;
+            	if((err=Write_str_params(__pars->c,__pars->u.str))!=ESP_OK) return err;
             }
             else return 1;
 //            send_chars(con,"before commit");
-            if((err=nvs_commit(nvs))!=ESP_OK) return err;
+            if((err=Commit_params())!=ESP_OK) return err;
             return 0;
         }
         __pars++;

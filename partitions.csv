@@ -3,4 +3,5 @@
 nvs,      data, nvs,     ,        0x6000,
 phy_init, data, phy,     ,        0x1000,
 factory,  app,  factory, ,        0x180000,
-params,   data, nvs,     ,        0x8000
+sx1276_deveui,data,nvs,0x3E8000,  0x10000,
+sx1276_params,data,nvs,0x3f8000,  0x8000,

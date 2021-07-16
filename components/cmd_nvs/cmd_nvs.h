@@ -12,10 +12,13 @@
 extern "C" {
 #endif
 
-#include "nvs.h"
+#include "esp_err.h"
+#include "eui.h"
 
 #define VISIBLE 1
 #define HIDDEN  0
+
+#define MAX_EEPROM_RECORDS 64
 
 typedef enum
 {
@@ -54,16 +57,46 @@ typedef enum
 	TRANSMIT_MODE = 0x01
 } tmode_t;
 
+typedef union
+{
+	uint64_t u64;
+	uint32_t u32[2];
+	uint16_t u16[4];
+	uint8_t u8[8];
+	struct
+	{
+		uint32_t u32low;
+		struct
+		{
+			uint16_t DevNonce;
+			struct
+			{
+				uint8_t u8low;
+				uint8_t type;
+			} x16;
+
+		} x32;
+	} x64;
+} Record_t;
+
 // Register NVS functions
 esp_err_t Sync_EEPROM(void);
-esp_err_t Write_u32_EEPROM(char* key, uint32_t val);
-esp_err_t Write_u8_EEPROM(char* key, uint8_t val);
-esp_err_t Write_i32_EEPROM(char* key, int32_t val);
-esp_err_t Write_key_EEPROM(char* key, uint8_t* appkey);
-esp_err_t Write_eui_EEPROM(char* key, uint8_t* eui);
-esp_err_t Write_str_EEPROM(char* key, char* str);
-
-
+esp_err_t Write_u32_params(char* key, uint32_t val);
+esp_err_t Write_u8_params(char* key, uint8_t val);
+esp_err_t Write_i32_params(char* key, int32_t val);
+esp_err_t Write_key_params(char* key, uint8_t* appkey);
+esp_err_t Write_eui_params(char* key, uint8_t* eui);
+esp_err_t Write_str_params(char* key, char* str);
+esp_err_t Commit_params(void);
+esp_err_t get_Eui(uint8_t n, GenericEui_t* deveui);
+esp_err_t put_Eui(uint8_t n, GenericEui_t* deveui);
+uint8_t get_EUI_type(uint8_t n);
+void set_EUI_type(uint8_t n);
+void clear_EUI_type(uint8_t n);
+uint16_t get_DevNonce(uint8_t n);
+void put_DevNonce(uint8_t n, uint16_t DevNonce);
+uint8_t get_eui_numbers(void);
+uint8_t increase_eui_numbers(void);
 #ifdef __cplusplus
 }
 #endif

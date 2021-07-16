@@ -13,13 +13,11 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <inttypes.h>
-#include "esp_console.h"
 #include "esp_log.h"
 //#include "argtable3/argtable3.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_err.h"
-#include "nvs.h"
 #include "nvs_flash.h"
 #include "cmd_nvs.h"
 
@@ -74,14 +72,17 @@ _par_t _pars[]={
 	{0,NULL,{0},NULL,HIDDEN}
 };
 
-nvs_handle_t nvs;
+nvs_handle_t nvs, nvs_deveui;
 uint8_t s2lp_console_ex=0;
 
-static char eeprom_namespace[16] = "params";
-static char eeprom_partition[16] = "params";
+static char params_namespace[16] = "sx1276_params";
+static char params_partition[16] = "sx1276_params";
+static char deveui_namespace[16] = "sx1276_deveui";
+static char deveui_partition[16] = "sx1276_deveui";
 static const char *TAG = "cmd_nvs";
 
 
+static uint64_t EEPROM_types;
 static void make_deveui(void);
 static void get_uid(uint32_t* uid);
 static esp_err_t add_uid(void);
@@ -95,16 +96,23 @@ esp_err_t Sync_EEPROM(void)
     size_t len;
     void* p;
 
-	err=nvs_flash_init_partition(eeprom_partition);
-//	printf("nvs_flash_init_partition result=%s\n",esp_err_to_name(err));
+	if((err=nvs_flash_init_partition(params_partition))!=ESP_OK) ESP_LOGE(TAG,"nvs_flash_init_partition %s result=%s\n",params_partition, esp_err_to_name(err));
 
-	err = nvs_open_from_partition(eeprom_partition, eeprom_namespace, NVS_READWRITE, &nvs);
-//	printf("nvs_open namespace result=%s\n",esp_err_to_name(err));
-    if (err != ESP_OK) {
+	if((err = nvs_open_from_partition(params_partition, params_namespace, NVS_READWRITE, &nvs))!=ESP_OK)
+    {
+		ESP_LOGE(TAG,"nvs_open partition %s namespace %s result=%s\n",params_partition, params_namespace,esp_err_to_name(err));
     	return err;
     }
-    if ((err = nvs_get_u8(nvs, "eeprom", &v8)) != ESP_OK)
+	if((err=nvs_flash_init_partition(deveui_partition))!=ESP_OK) ESP_LOGE(TAG,"nvs_flash_init_partition %s result=%s\n",deveui_partition, esp_err_to_name(err));
+
+	if((err = nvs_open_from_partition(deveui_partition, deveui_namespace, NVS_READWRITE, &nvs_deveui))!=ESP_OK)
     {
+		ESP_LOGE(TAG,"nvs_open partition %s namespace %s result=%s\n",deveui_partition, deveui_namespace,esp_err_to_name(err));
+    	return err;
+    }
+    if ((err = nvs_get_u8(nvs, "params", &v8)) != ESP_OK)
+    {
+		printf("nvs read params value, result=%s\n",esp_err_to_name(err));
     	return err;
     }
 
@@ -218,7 +226,7 @@ esp_err_t Sync_EEPROM(void)
 		}
 
 		make_deveui();
-		nvs_set_u8(nvs,"eeprom",1);
+		nvs_set_u8(nvs,"params",1);
 
 		if((err=nvs_commit(nvs))!=ESP_OK)
 		{
@@ -267,39 +275,180 @@ static esp_err_t add_uid()
 }
 
 
-esp_err_t Write_u32_EEPROM(char* key, uint32_t val)
+esp_err_t Write_u32_params(char* key, uint32_t val)
 {
-	return nvs_set_u32(nvs,key,val);
+	esp_err_t err;
+	if((err=nvs_set_u32(nvs,key,val))!=ESP_OK) ESP_LOGE(TAG, "Error writing u32 value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Write_u8_EEPROM(char* key, uint8_t val)
+esp_err_t Write_u8_params(char* key, uint8_t val)
 {
-	return nvs_set_u8(nvs,key,val);
+	esp_err_t err;
+	if((err=nvs_set_u8(nvs,key,val))!=ESP_OK) ESP_LOGE(TAG, "Error writing u8 value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Write_i32_EEPROM(char* key, int32_t val)
+esp_err_t Write_i32_params(char* key, int32_t val)
 {
-	return nvs_set_i32(nvs,key,val);
+	esp_err_t err;
+	if((err=nvs_set_i32(nvs,key,val))!=ESP_OK) ESP_LOGE(TAG, "Error writing i32 value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Write_key_EEPROM(char* key, uint8_t* appkey)
+esp_err_t Write_key_params(char* key, uint8_t* appkey)
 {
-	return nvs_set_blob(nvs,key,appkey,16);
+	esp_err_t err;
+	if((err=nvs_set_blob(nvs,key,appkey,16))!=ESP_OK) ESP_LOGE(TAG, "Error writing appkey value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Write_eui_EEPROM(char* key, uint8_t* eui)
+esp_err_t Write_eui_params(char* key, uint8_t* eui)
 {
-	return nvs_set_u64(nvs,key,*((uint64_t*)eui));
+	esp_err_t err;
+	if((err=nvs_set_u64(nvs,key,*((uint64_t*)eui)))!=ESP_OK) ESP_LOGE(TAG, "Error writing eui value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Write_str_EEPROM(char* key, char* str)
+esp_err_t Write_str_params(char* key, char* str)
 {
-	return nvs_set_str(nvs,key,str);
+	esp_err_t err;
+	if((err=nvs_set_str(nvs,key,str))!=ESP_OK) ESP_LOGE(TAG, "Error writing str value to nvs err=%s\n",esp_err_to_name(err));
+	return err;
 }
 
-esp_err_t Commit(void)
+esp_err_t Commit_params(void)
 {
-	return nvs_commit(nvs);
+	esp_err_t err;
+	if((err=nvs_commit(nvs))!=ESP_OK) ESP_LOGE(TAG, "Error while commit nvs err=%s\n",esp_err_to_name(err));
+	return err;
+}
+
+esp_err_t get_Eui(uint8_t n,GenericEui_t* deveui)
+{
+    char key[10];
+	esp_err_t err;
+	sprintf(key,"DEVEUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&deveui->eui))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading eui number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	return err;
+}
+
+esp_err_t put_Eui(uint8_t n,GenericEui_t* deveui)
+{
+    char key[10];
+	esp_err_t err;
+	sprintf(key,"DEVEUI%03d",n);
+	if((err=nvs_set_u64(nvs_deveui,key,deveui->eui))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error writing eui number %d key %s to nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	return err;
+}
+
+uint8_t get_EUI_type(uint8_t n)
+{
+    char key[10];
+    Record_t val;
+	esp_err_t err;
+	sprintf(key,"PAREUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading type number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	return val.x64.x32.x16.type;
+}
+
+void set_EUI_type(uint8_t n)
+{
+    char key[10];
+    Record_t val;
+	esp_err_t err;
+	sprintf(key,"PAREUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading type number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	val.x64.x32.x16.type=1;
+	if((err=nvs_set_u64(nvs_deveui,key,val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error writing type number %d key %s to nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+}
+
+void clear_EUI_type(uint8_t n)
+{
+    char key[10];
+    Record_t val;
+	esp_err_t err;
+	sprintf(key,"PAREUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading type number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	val.x64.x32.x16.type=0;
+	if((err=nvs_set_u64(nvs_deveui,key,val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error writing type number %d key %s to nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+}
+
+uint16_t get_DevNonce(uint8_t n)
+{
+    char key[10];
+    Record_t val;
+	esp_err_t err;
+	sprintf(key,"PAREUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading devnonce number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	return val.x64.x32.DevNonce;
 }
 
 
+void put_DevNonce(uint8_t n, uint16_t DevNonce)
+{
+    char key[10];
+    Record_t val;
+	esp_err_t err;
+	sprintf(key,"PAREUI%03d",n);
+	if((err=nvs_get_u64(nvs_deveui,key,&val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading devnonce number %d key %s from nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+	val.x64.x32.DevNonce=DevNonce;
+	if((err=nvs_set_u64(nvs_deveui,key,val.u64))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error writing devnonce number %d key %s to nvs_deveui err=%s\n",n,key,esp_err_to_name(err));
+	}
+}
+
+uint8_t get_eui_numbers(void)
+{
+	uint8_t val;
+	esp_err_t err;
+	if((err=nvs_get_u8(nvs_deveui,"EUI_NUMBERS",&val))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading EUI_NUMBERS from nvs_deveui err=%s\n",esp_err_to_name(err));
+	}
+	return val;
+}
+
+uint8_t increase_eui_numbers(void)
+{
+	uint8_t val;
+	esp_err_t err;
+	if((err=nvs_get_u8(nvs_deveui,"EUI_NUMBERS",&val))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error reading EUI_NUMBERS from nvs_deveui err=%s\n",esp_err_to_name(err));
+	}
+	val++;
+	if((err=nvs_set_u8(nvs_deveui,"EUI_NUMBERS",val))!=ESP_OK)
+	{
+		ESP_LOGE(TAG,"Error writing EUI_NUMBERS to nvs_deveui err=%s\n",esp_err_to_name(err));
+	}
+	return val;
+}

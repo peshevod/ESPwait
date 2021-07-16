@@ -30,13 +30,15 @@
 #include "MCU_Interface.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
-#include "aws_iot_config.h"
-#include "aws_iot_log.h"
-#include "aws_iot_version.h"
-#include "aws_iot_mqtt_client_interface.h"
-#include "aws_iot_shadow_interface.h"
+//#include "aws_iot_config.h"
+//#include "aws_iot_log.h"
+//#include "aws_iot_version.h"
+//#include "aws_iot_mqtt_client_interface.h"
+//#include "aws_iot_shadow_interface.h"
 #include "spp_server.h"
 #include "esp_sntp.h"
+#include "lorawan_types.h"
+#include "eui.h"
 
 //#include "bt/host/bluedroid/api/include/api/esp_bt_main.h"
 //#include "soc/rtc.h"
@@ -102,22 +104,18 @@ static EventGroupHandle_t s_wifi_event_group;
 const int WIFI_CONNECTED_BIT = BIT0;
 
 esp_netif_t* wifi_interface;
-AWS_IoT_Client client;
+/*AWS_IoT_Client client;
 char* pCert;
 char* pRoot;
-char* pKey;
+char* pKey;*/
 
 
 
 static void initialize_nvs()
 {
-    esp_err_t err = nvs_flash_init_partition("s2lp");
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "s2lp partition error: %s", esp_err_to_name(err));
-    }
-    ESP_ERROR_CHECK(err);
-
-    err = nvs_flash_init();
+    esp_err_t err;
+    if((err = nvs_flash_init())!=ESP_OK) ESP_LOGE("main","Error while init default nvs err=%s\n",esp_err_to_name(err));
+    return;
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK( nvs_flash_erase() );
         err = nvs_flash_init();
@@ -298,7 +296,7 @@ static void update_table(uint32_t ser, uint32_t seq_number,int16_t i)
 	if(i>=table.n_of_rows) table.n_of_rows++;
 }
 
-void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
+/*void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
 {
     char* TAG="disconnectCallbackHandler";
 	ESP_LOGW(TAG, "MQTT Disconnect");
@@ -319,20 +317,20 @@ void disconnectCallbackHandler(AWS_IoT_Client *pClient, void *data)
             ESP_LOGW(TAG, "Manual Reconnect Failed - %d", rc);
         }
     }
-}
+}*/
 
 
-static void add_to_Payload(char* Payload, char* key, char* value, int last)
+/*static void add_to_Payload(char* Payload, char* key, char* value, int last)
 {
 	char str[128];
 	if(last) sprintf(str,"\t\"%s\" : \"%s\"\n",key,value);
 	else sprintf(str,"\t\"%s\" : \"%s\",\n",key,value);
 	strcat(Payload,str);
-}
+}*/
 
 
 
-static void send_to_cloud()
+/*static void send_to_cloud()
 {
 	char HostAddress[255] = "af0rqdl7ywamp-ats.iot.us-west-2.amazonaws.com";
 	char* clientID="721730703209";
@@ -374,7 +372,7 @@ static void send_to_cloud()
 		connectParams.keepAliveIntervalInSec = 10;
 		connectParams.isCleanSession = true;
 		connectParams.MQTTVersion = MQTT_3_1_1;
-		/* Client ID is set in the menuconfig of the example */
+		// Client ID is set in the menuconfig of the example
 		connectParams.pClientID = clientID;
 		connectParams.clientIDLen = (uint16_t) strlen(clientID);
 		connectParams.isWillMsgPresent = false;
@@ -390,11 +388,11 @@ static void send_to_cloud()
 		} while(SUCCESS != rc);
 		aws_con=1;
 
-		/*
-		* Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
-	    *  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
-	    *  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
-	    */
+		//
+	    // Enable Auto Reconnect functionality. Minimum and Maximum time of Exponential backoff are set in aws_iot_config.h
+	    //  #AWS_IOT_MQTT_MIN_RECONNECT_WAIT_INTERVAL
+	    //  #AWS_IOT_MQTT_MAX_RECONNECT_WAIT_INTERVAL
+	    //
 		rc = aws_iot_mqtt_autoreconnect_set_status(&client, true);
 		if(SUCCESS != rc) {
 			ESP_LOGE(TAG, "Unable to set Auto Reconnect to true - %d", rc);
@@ -451,7 +449,7 @@ static void send_to_cloud()
 		else ESP_LOGI(TAG,"Published to %s:\n%s",TOPIC,cPayload);
 		free(cPayload);
     } while((NETWORK_ATTEMPTING_RECONNECT == rc || NETWORK_RECONNECTED == rc || SUCCESS != rc));
-}
+}*/
 
 
 
@@ -550,7 +548,7 @@ static void s2lp_wait()
 		{
 			if(wifi_prepare()==ESP_OK)
 			{
-				send_to_cloud();
+//				send_to_cloud();
 				update_table(data.serial_number,data.seq_number,i0);
 			}
 			else ESP_LOGE("s2lp_wait","Failed to send - no connection");
@@ -560,8 +558,8 @@ static void s2lp_wait()
 	if(mqtt_con)
 	{
 	    mqtt_con=0;
-	    IoT_Error_t rc=aws_iot_mqtt_disconnect(&client);
-	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
+//	    IoT_Error_t rc=aws_iot_mqtt_disconnect(&client);
+//	    if(rc==SUCCESS) ESP_LOGI(TAG,"Disconnected from AWS");
 	    aws_con=0;
 	}
 	wifi_unprepare();
@@ -722,9 +720,12 @@ void to_sleep(uint32_t timeout)
 
 static void system_init()
 {
+	esp_err_t err;
 	init_uart0();
 //	initialize_nvs();
 	Sync_EEPROM();
+    if((err = nvs_flash_init())!=ESP_OK) ESP_LOGE("main.c","Error while init default nvs err=%s\n",esp_err_to_name(err));
+    fill_devices();
 }
 
 
@@ -798,7 +799,6 @@ void app_main(void)
 		case ESP_SLEEP_WAKEUP_UNDEFINED:
 		default:
 			ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
-			Sync_EEPROM();
 			S2LPEnterShutdown();
 			S2LPExitShutdown();
 			seq=0;
