@@ -25,5 +25,5 @@ set_property(DIRECTORY "${COMPONENT_PATH}" APPEND PROPERTY
 #esptool_py_flash_project_args(sx1276 0x190000 ${CMAKE_CURRENT_SOURCE_DIR}/params.bin FLASH_IN_PROJECT)
 #esptool_py_flash_target(sx1276-flash "${main_args}" "${sub_args}")
 #esptool_py_flash_target_image(sx1276-flash sx1276 "0x3F8000" "${CMAKE_CURRENT_SOURCE_DIR}/sx1276_params.bin")
-#esptool_py_flash_target_image(flash sx1276_params "0x3F8000" "${CMAKE_CURRENT_SOURCE_DIR}/sx1276_params.bin")
-esptool_py_flash_target_image(flash sx1276_deveui "0x3E8000" "${CMAKE_CURRENT_SOURCE_DIR}/sx1276_deveui.bin")
+esptool_py_flash_target_image(flash sx1276_params "0x3F8000" "${CMAKE_CURRENT_SOURCE_DIR}/sx1276_params.bin")
+#esptool_py_flash_target_image(flash sx1276_deveui "0x3E8000" "${CMAKE_CURRENT_SOURCE_DIR}/sx1276_deveui.bin")

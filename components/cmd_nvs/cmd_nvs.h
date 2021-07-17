@@ -97,6 +97,10 @@ uint16_t get_DevNonce(uint8_t n);
 void put_DevNonce(uint8_t n, uint16_t DevNonce);
 uint8_t get_eui_numbers(void);
 uint8_t increase_eui_numbers(void);
+esp_err_t erase_EEPROM_Data(void);
+esp_err_t Commit_deveui(void);
+
+
 #ifdef __cplusplus
 }
 #endif

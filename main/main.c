@@ -725,6 +725,8 @@ static void system_init()
 //	initialize_nvs();
 	Sync_EEPROM();
     if((err = nvs_flash_init())!=ESP_OK) ESP_LOGE("main.c","Error while init default nvs err=%s\n",esp_err_to_name(err));
+    Profile_t JoinServer;
+    uint8_t x=selectJoinServer((void*)&JoinServer);
     fill_devices();
 }
 

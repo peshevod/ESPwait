@@ -18,6 +18,7 @@
 #include "esp_system.h"
 
 Profile_t devices[64];
+char TAG[]={"eui.c"};
 
 uint8_t euicmpnz(GenericEui_t* eui)
 {
@@ -93,6 +94,7 @@ uint8_t selectJoinServer(void* joinServer)
 //                     printVar(" Eui=",PAR_EUI64,&(joinServer->Eui),true,true);
                 }
                 eui_numbers=increase_eui_numbers();
+                Commit_deveui();
             }
         }
     }
@@ -102,7 +104,7 @@ uint8_t selectJoinServer(void* joinServer)
         ((Profile_t*)joinServer)->DevNonce=get_DevNonce(js);
     }
     ((Profile_t*)joinServer)->js=js;
-    ESP_LOGI("eui.c","Selected JoinServer js=%d Eui=%16llX\n",js,((Profile_t*)joinServer)->Eui.eui);
+    ESP_LOGI("eui.c","Selected JoinServer js=%d Eui=%016llX\n",js,((Profile_t*)joinServer)->Eui.eui);
     return js;
 }
 
@@ -112,14 +114,13 @@ uint8_t fill_devices(void)
     uint8_t eui_numbers;
     GenericEui_t devEui,dev_eeprom;
     uint8_t js=0,found=0;
-//    printVar("before EEPROM_types=",PAR_UI32,&EEPROM_types,true,true);
+ESP_LOGI(TAG,"before n_of_eui=%d\n",get_eui_numbers());
     strcpy(devName,"DEV0EUI");
-    for(uint8_t j=1;j<7;j++)
+    for(uint8_t j=1;j<=7;j++)
     {
         devName[3]=0x30 + j;
         set_s(devName,&devEui);
-//        printVar("j=",PAR_UI8,&j,false,false);
-//        printVar(" Eui=",PAR_EUI64,&devEui,true,true);
+        ESP_LOGI(TAG,"j=%d Eui=0x%016llX\n",j,devEui.eui);
         if(euicmpnz(&devEui))
         {
 //            send_chars("not zero\r\n");
@@ -132,24 +133,20 @@ uint8_t fill_devices(void)
                      if(!euicmp(&devEui,&(dev_eeprom)) && !get_EUI_type(k))
                      {
                          found=1;
-//                         send_chars("found in EEPROM\r\n");
-//                        printVar("k=",PAR_UI8,&k,false,false);
-//                        printVar(" Eui=",PAR_EUI64,&(dev_eeprom.Eui),true,true);
+                         ESP_LOGI(TAG,"found j=%d Eui=0x%016llX k=%d\n",j,devEui.eui,k);
                          break;
                      }
                 }
                 else return 0;
-//                printVar("k=",PAR_UI8,&k,false,false);
-//                printVar(" Eui=",PAR_EUI64,&(dev_eeprom.Eui),true,true);
             }
             if(!found)
             {
                 put_Eui(eui_numbers,&devEui);
-//                printVar("Write to EEPROM k=",PAR_UI8,&kfree,false,false);
-//                printVar(" Put Eui=",PAR_EUI64,&devEui,true,true);
                 put_DevNonce(eui_numbers,0);
                 clear_EUI_type(eui_numbers);
                 eui_numbers=increase_eui_numbers();
+                Commit_deveui();
+                ESP_LOGI(TAG,"not found j=%d Eui=0x%016llX k=%d\n",j,devEui.eui,get_eui_numbers()-1);
             }
         }
     }
@@ -157,10 +154,10 @@ uint8_t fill_devices(void)
 //    printVar("after EEPROM_types=",PAR_UI32,&EEPROM_types,true,true);
     for(uint8_t j=0;j<eui_numbers;j++)
     {
-        if(get_Eui(j,&devices[js].Eui)==1 && !get_EUI_type(j))
+        if(get_Eui(j,&devices[js].Eui)==ESP_OK && !get_EUI_type(j))
         {
             devices[js].DevNonce=get_DevNonce(j);
-            ESP_LOGI("eui.c","Device number=%d DevNonce=%04X EUI=%16llX\n",js,devices[js].DevNonce,devices[js].Eui.eui);
+            ESP_LOGI(TAG,"Device number=%d DevNonce=0x%04X EUI=0x%016llX\n",js,devices[js].DevNonce,devices[js].Eui.eui);
             devices[js].js=j;
             js++;
         }
@@ -170,6 +167,7 @@ uint8_t fill_devices(void)
 //           printVar(" Eui=",PAR_EUI64,&(devices[js].Eui),true,true);
 //        }
     }
+
     return js;
 }
 

@@ -569,7 +569,7 @@ uint8_t set_par(console_type con, char* par, char* val_buf)
         {
             if(!strcmp(__pars->c,"Erase_EEPROM"))
             {
-//                erase_EEPROM_Data();
+                if(erase_EEPROM_Data()!=ESP_OK) return 1;
                 return 0;
             }
             if(__pars->type==PAR_UI32)
