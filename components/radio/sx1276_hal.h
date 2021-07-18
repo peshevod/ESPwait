@@ -29,6 +29,12 @@ extern "C" {
 
 #define MY_SPI_HOST				SPI3_HOST
 
+#define DIO0        0x01
+#define DIO1        0x02
+#define DIO2        0x04
+#define DIO3        0x08
+#define DIO4        0x10
+#define DIO5        0x20
 
 void HALResetPinMakeOutput(void);
 void HALResetPinMakeInput(void);
@@ -45,7 +51,8 @@ uint8_t RADIO_RegisterRead(uint8_t reg);
 void HALSPIWriteFIFO(uint8_t* data, uint8_t datalen);
 void HALSPIReadFIFO(uint8_t* data, uint8_t datalen);
 void HALSPIReadFSKFIFO(uint8_t* data, uint8_t* datalen);
-
+void DIO_ISR_Lora(void* DIO);
+void HALDioInterruptInit(void);
 
 uint8_t HALDIO0PinValue(void);
 uint8_t HALDIO1PinValue(void);

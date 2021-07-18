@@ -12,6 +12,8 @@ spi_device_handle_t spi;
 esp_err_t ret;
 char TAG[]={"SX1276_HAL"};
 extern uint8_t trace;
+gpio_isr_handle_t gpio_handle_DIO0, gpio_handle_DIO1, gpio_handle_DIO2, gpio_handle_DIO5;
+volatile uint8_t dioStatus=0;
 
 spi_bus_config_t buscfg={
     .miso_io_num=-1,
@@ -218,4 +220,34 @@ void V1_SetHigh(void)
     gpio_set_level(PIN_NUM_SX1276_V1, 1);
 }
 
+
+void DIO_ISR_Lora(void* DIO)
+{
+    dioStatus |= (uint8_t)DIO;
+}
+
+
+void HALDioInterruptInit(void)
+{
+    gpio_config_t io_conf;
+    esp_err_t err;
+    io_conf.pin_bit_mask=(1ULL<<PIN_NUM_SX1276_DIO0)|(1ULL<<PIN_NUM_SX1276_DIO1)|(1ULL<<PIN_NUM_SX1276_DIO2)|(1ULL<<PIN_NUM_SX1276_DIO5);
+    io_conf.mode=GPIO_MODE_DEF_INPUT;
+    io_conf.pull_up_en=GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en=GPIO_PULLDOWN_DISABLE;
+    io_conf.intr_type=GPIO_INTR_POSEDGE;
+
+    gpio_config(&io_conf);
+
+    if((err=gpio_install_isr_service(ESP_INTR_FLAG_LOWMED|ESP_INTR_FLAG_IRAM|ESP_INTR_FLAG_SHARED))!=ESP_OK)
+    	ESP_LOGE(TAG,"Failed install ISR service err=%s",esp_err_to_name(err));
+    if((err=gpio_isr_handler_add(PIN_NUM_SX1276_DIO0, DIO_ISR_Lora, (void*) DIO0))!=ESP_OK)
+    	ESP_LOGE(TAG,"Failed add ISR handler for pin %d err=%s",PIN_NUM_SX1276_DIO0, esp_err_to_name(err));
+    if((err=gpio_isr_handler_add(PIN_NUM_SX1276_DIO1, DIO_ISR_Lora, (void*) DIO1))!=ESP_OK)
+    	ESP_LOGE(TAG,"Failed add ISR handler for pin %d err=%s",PIN_NUM_SX1276_DIO1, esp_err_to_name(err));
+    if((err=gpio_isr_handler_add(PIN_NUM_SX1276_DIO2, DIO_ISR_Lora, (void*) DIO2))!=ESP_OK)
+    	ESP_LOGE(TAG,"Failed add ISR handler for pin %d err=%s",PIN_NUM_SX1276_DIO2, esp_err_to_name(err));
+    if((err=gpio_isr_handler_add(PIN_NUM_SX1276_DIO5, DIO_ISR_Lora, (void*) DIO5))!=ESP_OK)
+    	ESP_LOGE(TAG,"Failed add ISR handler for pin %d err=%s",PIN_NUM_SX1276_DIO5, esp_err_to_name(err));
+}
 
