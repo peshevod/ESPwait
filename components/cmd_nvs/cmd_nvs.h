@@ -6,7 +6,8 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
-#pragma once
+#ifndef COMPONENTS_CMD_NVS_H_
+#define COMPONENTS_CMD_NVS_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,3 +106,4 @@ esp_err_t Commit_deveui(void);
 }
 #endif
 
+#endif /* COMPONENTS_CMD_NVS_H_ */

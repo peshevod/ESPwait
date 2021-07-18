@@ -25,9 +25,7 @@
 #include "s2lp_console.h"
 #include "cmd_nvs.h"
 #include "main.h"
-#include "S2LP_Config.h"
 #include "radio.h"
-#include "MCU_Interface.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 //#include "aws_iot_config.h"
@@ -62,7 +60,6 @@ uint8_t con,mqtt_con,aws_con;
 tcpip_adapter_if_t ifindex;
 static input_data_t data;
 static DRAM_ATTR xQueueHandle s2lp_evt_queue = NULL;
-static S2LPIrqs xIrqStatus;
 static wifi_config_t sta_config;
 static volatile uint8_t ready_to_send=0;
 static volatile uint8_t wifi_stopped;
@@ -142,35 +139,6 @@ void init_uart0()
     data0 = (uint8_t *) malloc(BUF_SIZE);
 }
 
-
-void test_gpio(void)
-{
-
-	gpio_num_t gpio_nums[4]={4,2,26,25};
-
-
-	for(S2LPGpioPin pin=0;pin<4;pin++)
-	{
-		gpio_iomux_out(gpio_nums[pin], 2, false);
-		gpio_set_direction(gpio_nums[pin], GPIO_MODE_INPUT);
-		printf("\nTest of s2lppin %d and gpio_pin %d:\n",pin,gpio_nums[pin]);
-
-		OutputLevel ol=OUTPUT_LOW;
-
-		for(int j=0;j<4;j++)
-		{
-			S2LPGpioSetLevel(pin,ol);
-			printf("Status 0x%02X 0x%02X\n",g_xStatus.MC_STATE,g_xStatus.XO_ON);
-			vTaskDelay(500 / portTICK_PERIOD_MS);
-			int il=gpio_get_level(gpio_nums[pin]);
-			if((il && ol) || (!il && !ol)) printf("outputlevel=%d inputlevel=%d S2LPPin %d GPIO %d - OK\n",ol,il,pin,gpio_nums[pin]);
-			else printf("outputlevel=%d inputlevel=%d S2LPPin %d GPIO %d - FAIL\n",ol,il,pin,gpio_nums[pin]);
-			ol=1-ol;
-			vTaskDelay(500 / portTICK_PERIOD_MS);
-		}
-	}
-
-}
 
 
 static void event_handler(void* arg, esp_event_base_t event_base,
@@ -453,7 +421,7 @@ static void update_table(uint32_t ser, uint32_t seq_number,int16_t i)
 
 
 
-static void IRAM_ATTR s2lp_intr_handler(void* arg)
+/*static void IRAM_ATTR s2lp_intr_handler(void* arg)
 {
 	input_data_t data_in;
 	S2LPTimerLdcIrqWa(S_ENABLE);
@@ -471,7 +439,7 @@ static void IRAM_ATTR s2lp_intr_handler(void* arg)
         xQueueSendFromISR(s2lp_evt_queue,&data_in,0);
     }
     S2LPTimerLdcIrqWa(S_DISABLE);
-}
+}*/
 
 static void config_isr0(void)
 {
@@ -496,7 +464,7 @@ static void config_isr0(void)
     gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
     ESP_LOGI(TAG,"isr service set");
     //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(PIN_NUM_S2LP_GPIO0, s2lp_intr_handler, NULL);
+//    gpio_isr_handler_add(PIN_NUM_S2LP_GPIO0, s2lp_intr_handler, NULL);
     ESP_LOGI(TAG,"handler added to isr service");
 }
 
@@ -510,7 +478,7 @@ static void s2lp_rec_start2(void *arg)
 
 // Send data to queue an rearm receive
 
-static void s2lp_getdata()
+/*static void s2lp_getdata()
 {
 	input_data_t data_in;
 	S2LPTimerLdcIrqWa(S_ENABLE);
@@ -532,12 +500,12 @@ static void s2lp_getdata()
 //    ESP_LOGI("s2lp_getdata","8");
     S2LPTimerLdcIrqWa(S_DISABLE);
 //   	ESP_LOGI("s2lp_getdata","9");
-}
+}*/
 
 static void s2lp_wait()
 {
     s2lp_evt_queue = xQueueCreate(10, sizeof(input_data_t));
-    s2lp_getdata();
+//    s2lp_getdata();
    	ESP_LOGI("s2lp_wait","got data from s2lp");
     xTaskCreatePinnedToCore(s2lp_rec_start2, "s2lp_rec_start2", 8192, NULL, 10, NULL,0);
 	while(xQueueReceive(s2lp_evt_queue,&data,16000/portTICK_PERIOD_MS))
@@ -572,12 +540,12 @@ static esp_err_t s2lp_start()
 
     set_s("T", &mode);
 
-    if(mode==RECEIVE_MODE) return s2lp_rec_start();
+//    if(mode==RECEIVE_MODE) return s2lp_rec_start();
     if(mode==TRANSMIT_MODE)
     {
     	set_s("X", &rep);
     	next=uid;
-    	s2lp_trans_start();
+//    	s2lp_trans_start();
     }
     return ESP_OK;
 }
@@ -621,14 +589,14 @@ static esp_err_t set_global_sec()
 	return ESP_OK;
 }
 
-static esp_err_t s2lp_rec_start()
+/*static esp_err_t s2lp_rec_start()
 {
 
 	table.n_of_rows=0;
 
 	if(set_global_sec()!=ESP_OK) return ESP_FAIL;
 
-	radio_rx_init(PACKETLEN);
+//	radio_rx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_rx_init proceed");
 
     S2LPGpioIrqGetStatus(&xIrqStatus);
@@ -636,14 +604,14 @@ static esp_err_t s2lp_rec_start()
     ESP_LOGI(TAG,"s2lp irq Status get");
     S2LPCmdStrobeRx();
     return ESP_OK;
-}
+}*/
 
 
-static void s2lp_trans_start()
+/*static void s2lp_trans_start()
 {
 	cw=0;
 	pn9=0;
-	radio_tx_init(PACKETLEN);
+//	radio_tx_init(PACKETLEN);
     ESP_LOGI(TAG,"radio_tx_init proceed cw=%d pn9=%d",cw,pn9);
 
     if(cw || pn9)
@@ -701,19 +669,15 @@ static void s2lp_trans()
     S2LPRefreshStatus();
     if(g_xStatus.MC_STATE== MC_STATE_TX) ESP_LOGI("s2lp_trans","Command tx successfully sent for seq=%d rep=%d",seq,rep);
     else ESP_LOGE("s2lp_trans","Command tx failed");
- }
+ }*/
 
 
 void to_sleep(uint32_t timeout)
 {
 	esp_wifi_stop();
 	esp_sleep_enable_timer_wakeup(timeout);
-	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000001<<PIN_NUM_S2LP_GPIO0,ESP_EXT1_WAKEUP_ALL_LOW);
-//	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
-//	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-//	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
-//	rtc_gpio_isolate(GPIO_INPUT_IO_0);
-	rtc_gpio_hold_en(PIN_NUM_S2LP_SDN);
+//	if(!only_timer_wakeup) esp_sleep_enable_ext1_wakeup(0x00000001<<PIN_NUM_S2LP_GPIO0,ESP_EXT1_WAKEUP_ALL_LOW);
+//	rtc_gpio_hold_en(PIN_NUM_S2LP_SDN);
 	esp_deep_sleep_start();
 }
 
@@ -736,14 +700,14 @@ void app_main(void)
 	system_init();
 	uint64_t sleep_time=30000000;
 	trans_sleep=30000000;
-	rtc_gpio_hold_dis(PIN_NUM_S2LP_SDN);
+//	rtc_gpio_hold_dis(PIN_NUM_S2LP_SDN);
 	switch (esp_sleep_get_wakeup_cause()) {
 		// Interrupt from S2LP
 		case ESP_SLEEP_WAKEUP_EXT1:
 			ESP_LOGI("app_main","Wakeup!!! interrupt num_of_rows=%d",table.n_of_rows);
-			S2LPGpioIrqGetStatus(&xIrqStatus);
-			ESP_LOGI("app_main","irq=0x%08X",((uint32_t*)(&xIrqStatus))[0]);
-			if(xIrqStatus.RX_DATA_READY)
+//			S2LPGpioIrqGetStatus(&xIrqStatus);
+//			ESP_LOGI("app_main","irq=0x%08X",((uint32_t*)(&xIrqStatus))[0]);
+/*			if(xIrqStatus.RX_DATA_READY)
 			{
 				if(mode==RECEIVE_MODE)
 				{
@@ -762,7 +726,7 @@ void app_main(void)
 				{
 					ESP_LOGI("app_main","Transmitted seq=%d, rep=%d",seq,rep);
 					// Turn off s2lp
-					S2LPEnterShutdown();
+//					S2LPEnterShutdown();
 					sleep_time=trans_sleep;
 					only_timer_wakeup=1;
 				}
@@ -770,7 +734,7 @@ void app_main(void)
 			else
 			{
 				sleep_time=trans_sleep;
-			}
+			}*/
 			break;
 			// Timer wakeup
 		case ESP_SLEEP_WAKEUP_TIMER:
@@ -786,8 +750,8 @@ void app_main(void)
 				}
 				else
 				{
-					S2LPExitShutdown();
-					s2lp_trans_start();
+//					S2LPExitShutdown();
+//					s2lp_trans_start();
 					only_timer_wakeup=0;
 					sleep_time=trans_sleep;
 				}
@@ -801,8 +765,8 @@ void app_main(void)
 		case ESP_SLEEP_WAKEUP_UNDEFINED:
 		default:
 			ESP_LOGI("app_main","Reset!!! portTICK_PERIOD_MS=%d",portTICK_PERIOD_MS);
-			S2LPEnterShutdown();
-			S2LPExitShutdown();
+//			S2LPEnterShutdown();
+//			S2LPExitShutdown();
 			seq=0;
 			ready_to_send=0;
 			wifi_stopped=1;
